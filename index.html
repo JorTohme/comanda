@@ -52,9 +52,11 @@
     background:var(--bg);
     color:var(--ink);
     font-family:var(--body);
+    font-family:var(--body);
     font-size:16px;
     line-height:1.65;
     -webkit-font-smoothing:antialiased;
+    overflow-wrap: break-word;
   }
 
   a{color:var(--accent-ink);text-decoration:none}
@@ -171,7 +173,7 @@
   .menu-btn{display:none}
 
   @media (max-width:860px){
-    .shell{grid-template-columns:1fr}
+    .shell{grid-template-columns:minmax(0, 1fr)}
     .side{
       position:sticky;top:0;height:auto;border-right:0;border-bottom:1px solid var(--hair);
       padding:14px 18px;background:var(--bg);z-index:5;
