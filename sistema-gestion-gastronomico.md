@@ -24,6 +24,20 @@ Aunque hoy lo pensamos para gastronomía, el dominio se diseña de forma **exten
 
 El CRUD de mesas y platos es lo fácil. Lo interesante —y lo que convierte esto en un buen proyecto de **sistemas distribuidos**— es mantener sincronizados en tiempo real tres "mundos" que viven en dispositivos distintos y con conectividad muchas veces de cuarta: **salón ↔ cocina ↔ caja**. De ahí salen los problemas posta: desconexiones, edición concurrente y eventos desordenados.
 
+### Por qué esto, contra lo que ya existe
+
+Fudo es el sistema de gestión gastronómica más establecido de Argentina — vale comparar contra algo real, no construir en el vacío. La comparación (fuentes públicas: centro de ayuda y precios oficiales de Fudo, agosto 2026) no busca decir que esté mal hecho — es un producto con años de mercado. Sirve para afinar en qué terreno competir.
+
+| Punto | Fudo (hoy) | Comanda |
+|---|---|---|
+| Conectividad | Requiere internet siempre — sin modo offline confirmado por su propio soporte. | Offline-first en la PWA: el mozo sigue cargando pedidos aunque se caiga el wifi (§7.1). |
+| Plano del salón | Módulo "Mesas" pago aparte, ni el plan más caro lo incluye. | Mapeo 2D del salón incluido desde el día uno (§7.8). |
+| Estructura de precios | Plan base barato, pero mesas + facturación + delivery escalan a $40.000+/mes por sucursal. | Pensado para no repetir ese unbundling agresivo — mismo espíritu con el que arranca este documento. |
+| Multi-sucursal | Contratación por sucursal, requiere hablar con ventas. | Multi-tenant desde el modelo de datos, no una decisión comercial (§3). |
+| Cocina / KDS | No queda claro si el tablero en tiempo real es parte del plan base. | Parte del núcleo del MVP, sin ambigüedad (§8). |
+
+> **El hueco real.** No es "lo mismo pero más barato". Es el terreno que el líder del mercado deja afuera de su propio modelo —offline, plano de salón, multi-sucursal sin fricción comercial— que además es, desde el arranque de este proyecto, el desafío técnico central.
+
 ---
 
 ## 2. Objetivos
