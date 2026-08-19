@@ -1,2 +1,21 @@
 PAUTAS-CATEDRA.md
 .atl/
+
+# node
+node_modules/
+pnpm-debug.log*
+npm-debug.log*
+
+# turbo
+.turbo/
+
+# build output
+dist/
+.next/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
