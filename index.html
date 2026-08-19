@@ -236,6 +236,7 @@
       <ul>
         <li>App fácil de usar para cargar pedidos, avisar platos no disponibles y marcar tiempos de entrega en tiempo real.</li>
         <li>Consola web para ver el estado del local de un vistazo, gestionar mesas, cobrar y consultar el cierre de caja.</li>
+        <li><strong>Plano 2D del salón</strong>, editable por el admin, para que la vista de mesas refleje la disposición real del local (y no una grilla genérica).</li>
         <li>Información centralizada y consistente entre salón y cocina, sin confusiones.</li>
         <li>Reportes automáticos: platos más pedidos, horas pico y rendimiento de ventas.</li>
         <li>Arquitectura flexible y multi-local, adaptable a otros rubros.</li>
@@ -338,7 +339,7 @@ flowchart TB
         <table>
           <thead><tr><th>Rol</th><th>Superficie</th><th>Qué hace</th></tr></thead>
           <tbody>
-            <tr><td>Admin</td><td>Consola web</td><td>Carga de precios, catálogo, configuración, reportes y estadísticas.</td></tr>
+            <tr><td>Admin</td><td>Consola web</td><td>Carga de precios, catálogo, configuración (incluye plano 2D del salón), reportes y estadísticas.</td></tr>
             <tr><td>Caja</td><td>Consola web</td><td>Cobros (Mercado Pago) y cierre de caja. Recibe el estado de las mesas en vivo por WS.</td></tr>
             <tr><td>Mozos</td><td>App operativa (PWA)</td><td>Toma de pedidos en el salón, offline-first con UI optimista.</td></tr>
             <tr><td>Cocina / KDS</td><td>App operativa (PWA)</td><td>Tablero de tickets; marca platos listos y no disponibles en tiempo real.</td></tr>
@@ -376,6 +377,7 @@ erDiagram
       <p class="caption">fig. 3 — entidades del núcleo</p>
       <h3>Ciclo de vida del pedido</h3>
       <p><code>abierto → enviado_a_cocina → en_preparacion → listo → entregado → cobrado → cerrado</code></p>
+      <p><code>MESA</code> guarda además su posición en el plano del salón (<code>pos_x</code>, <code>pos_y</code>, <code>rotacion</code>, <code>forma</code>, <code>ancho</code>, <code>alto</code>), para el mapeo 2D configurable por Admin.</p>
     </section>
 
     <!-- ════════════════════════════════════════════ -->
@@ -452,6 +454,14 @@ erDiagram
           </div>
         </div>
 
+        <div class="card">
+          <h3>Adaptar el salón a la forma real del local</h3>
+          <div class="pair">
+            <div class="row"><span class="tag d">DOLOR</span><p>Una grilla genérica de mesas no refleja rincones, barra o terraza; ubicar un pedido a ojo cuesta más de lo necesario en hora pico.</p></div>
+            <div class="row"><span class="tag s">SOLUCIÓN</span><p><strong>Editor de plano 2D (rol Admin).</strong> Al dar de alta la sucursal, el admin posiciona cada mesa arrastrándola sobre un layout que imita el local real. Salón, caja y mozos ven después las mesas en esa misma disposición, coloreadas por estado. No requiere librería de canvas: alcanza con posicionamiento absoluto + eventos de puntero, guardado como JSON por sucursal.</p></div>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -486,6 +496,7 @@ erDiagram
             <li>Cobros (Mercado Pago).</li>
             <li>Takeaway y delivery.</li>
             <li>Dashboard de reportes y estadísticas.</li>
+            <li>Editor de plano 2D del salón (Admin): mapear mesas a la disposición real del local.</li>
           </ul>
         </div>
         <div class="phase">

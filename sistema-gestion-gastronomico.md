@@ -34,6 +34,7 @@ Vincular la operación de salón y cocina con la administración del local media
 ### Específicos
 - App operativa **fácil de usar** para mozos y cocina: cargar pedidos, avisar platos no disponibles y marcar tiempos de entrega en tiempo real.
 - Consola web para el encargado y la caja: ver el estado del local de un vistazo, gestionar mesas, cobrar y consultar el cierre de caja.
+- **Plano 2D del salón**, editable por el admin, para que la vista de mesas refleje la disposición real del local (y no una grilla genérica).
 - Información **centralizada y consistente**: stock, ventas y disponibilidad actualizados al instante, sin confusiones entre salón y cocina.
 - **Reportes y estadísticas automáticos**: platos más pedidos, horas pico y rendimiento de ventas.
 - Cobros (Mercado Pago) integrados al cierre de caja.
@@ -114,7 +115,7 @@ flowchart TB
 **Backend NestJS (monolito modular)** — un solo deployable, módulos con fronteras claras:
 - `auth` / `tenancy` — usuarios, roles, scoping por organización y sucursal.
 - `catalogo` — platos, categorías, disponibilidad.
-- `salon` — mesas, posiciones de barra, estado de ocupación.
+- `salon` — mesas, posiciones de barra, estado de ocupación, plano 2D del local (layout configurable por admin).
 - `pedidos` — agregado central, máquina de estados del pedido.
 - `caja` — turnos, arqueo, cierre.
 - `sync` — endpoints pull/push para la replicación offline-first.
@@ -141,6 +142,8 @@ erDiagram
 ```
 
 `PEDIDO` lleva un campo **`tipo_servicio`** (`mesa` | `barra` | `takeaway` | `delivery`) que abstrae las cuatro modalidades sobre el mismo flujo. Su ciclo de vida:
+
+`MESA` guarda además su posición en el plano del salón (`pos_x`, `pos_y`, `rotacion`, `forma`, `ancho`, `alto`), para el mapeo 2D configurable por Admin (ver secciones 5 y 7.8).
 
 ```
 abierto → enviado_a_cocina → en_preparacion → listo → entregado → cobrado → cerrado
@@ -171,7 +174,7 @@ flowchart TB
 
 | Rol | Superficie | Qué hace |
 |---|---|---|
-| **Admin** | Consola web | Carga de precios, catálogo, configuración, reportes y estadísticas. |
+| **Admin** | Consola web | Carga de precios, catálogo, configuración (incluye plano 2D del salón), reportes y estadísticas. |
 | **Caja** | Consola web | Cobros (Mercado Pago) y cierre de caja. Recibe el estado de las mesas en vivo por WS. |
 | **Mozos** | App operativa (PWA) | Toma de pedidos en el salón, offline-first con UI optimista. |
 | **Cocina / KDS** | App operativa (PWA) | Tablero de tickets; marca platos listos y no disponibles en tiempo real. |
@@ -232,6 +235,10 @@ flowchart TB
 **Problema.** No todos los locales trabajan igual (mesa vs barra vs delivery; catálogos distintos).
 **Solución.** **Dominio extensible.** El agregado `Pedido` abstrae las modalidades con `tipo_servicio`, y el catálogo es configurable por sucursal. Sumar un rubro nuevo es agregar configuración, no reescribir el core.
 
+### 7.8 Adaptar el salón a la forma real del local
+**Problema.** Una grilla genérica de mesas no refleja rincones, barra o terraza; ubicar un pedido a ojo cuesta más de lo necesario, y confunde en horas pico.
+**Solución.** **Editor de plano 2D (rol Admin).** Al dar de alta la sucursal, el admin posiciona cada mesa (`pos_x`, `pos_y`, `rotacion`, `forma`, `ancho`, `alto`) arrastrándola sobre un layout que imita el local real. Salón, caja y mozos ven después las mesas en esa misma disposición, coloreadas por estado (libre / ocupada / pedido en curso), en vez de una lista o grilla abstracta. No requiere librería de canvas: alcanza con posicionamiento absoluto + eventos de puntero sobre el layout guardado como JSON por sucursal.
+
 ---
 
 ## 8. Roadmap por fases
@@ -248,6 +255,7 @@ flowchart TB
 - Cobros (Mercado Pago).
 - Takeaway y **delivery** (direcciones, estado de envío).
 - Dashboard de reportes y estadísticas.
+- **Editor de plano 2D del salón** (Admin): mapear mesas a la disposición real del local.
 
 **Fase 3**
 - Consolidación **multi-sucursal**.
