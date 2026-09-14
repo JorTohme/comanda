@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import { PlatosService } from "./platos.service";
 import { CreatePlatoDto } from "./dto/create-plato.dto";
 import { UpdatePlatoDto } from "./dto/update-plato.dto";
 
 @Controller("platos")
 export class PlatosController {
-  constructor(private readonly platosService: PlatosService) {}
+  // ponytail: explicit @Inject token — see categorias.controller.ts for why.
+  constructor(@Inject(PlatosService) private readonly platosService: PlatosService) {}
 
   @Post()
   create(@Body() dto: CreatePlatoDto) {
