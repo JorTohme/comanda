@@ -83,7 +83,7 @@ Mapeado 1:1 al roadmap de doc §8, partido en slices chicos y mergeables — cad
 ### MVP
 
 - [x] **Iter 0 — Scaffold.** Monorepo + los 3 apps vacíos conectados end-to-end (health check `web → api` y `operativa → api`). Docker Compose (Postgres + Redis). CI mínimo (lint + build).
-- [ ] **Iter 1 — Catálogo.** Platos, categorías, disponibilidad (backend + CRUD admin).
+- [x] **Iter 1 — Catálogo.** Platos, categorías, disponibilidad (backend + CRUD admin).
 - [ ] **Iter 2 — Salón.** Mesas CRUD + estado de ocupación, grilla simple. **El plano 2D queda afuera** — es Fase 2 (doc §7.8, §8).
 - [ ] **Iter 3 — Pedidos.** Agregado + máquina de estados (`abierto → enviado_a_cocina → en_preparacion → listo → entregado → cobrado → cerrado`, doc §4.3). Carga desde mozo, online-only en esta pasada.
 - [ ] **Iter 4 — Tiempo real.** Gateway Socket.io + Redis pub/sub. Eventos de dominio: `PedidoEnviadoACocina`, `PedidoListo`, `PlatoNoDisponible`, `MesaCerrada` (doc §7.3).
