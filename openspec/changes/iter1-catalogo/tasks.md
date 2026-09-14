@@ -120,4 +120,11 @@ Rough breakdown:
 
 **400-line budget risk**: **High** for a single PR covering the whole change (~800–900 lines, well over 2x budget); **Low–Medium** per phase-split PR above (each lands at roughly 150–350 lines).
 
+---
+
+## Post-Verify Fix: Dev Runner Decorator Metadata (CRITICAL-1)
+
+- [x] F.1 Root cause: `tsx watch` (esbuild) does not emit `emitDecoratorMetadata` output for controller-method parameters, so the global `ValidationPipe` silently received no `design:paramtypes` for `@Body() dto` parameters under `pnpm --filter api dev` — same root cause as the earlier constructor-DI `@Inject` fix, but never generalized. Fixed by replacing the dev runner itself: `apps/api/package.json` `dev` script switched from `tsx watch src/main.ts` to `nest start --watch`; added `@nestjs/cli` devDependency and `apps/api/nest-cli.json` (`sourceRoot: src`, `tsConfigPath: tsconfig.json`). Nest CLI's default builder uses `tsc`, which emits full decorator metadata identically to `pnpm build`. Removed the now-unused `tsx` devDependency.
+- [x] F.2 Regression proof: started `pnpm --filter api dev` (now `nest start --watch`) against local Postgres, curled `POST /categorias {}`, `POST /categorias {"nombre":""}` equivalent (`{}`), `POST /platos {}`, `POST /platos` with float `precio` and an unknown field — all four returned `400` with the expected `class-validator` messages (previously these would 500 or silently 201 under the buggy `tsx` runner). Full suite re-verified green after the fix: `pnpm --filter api test` 16/16, `pnpm --filter shared test` 8/8, `pnpm turbo run lint` 5/5, `pnpm turbo run build` 4/4.
+
 **Decision needed before apply**: **Yes.** Recommend the orchestrator confirm the 3-PR chained split above with the user before invoking `sdd-apply`, since a single-PR apply would exceed the 400-line review budget by a wide margin and mixes an infra-only PR (low review risk) with domain CRUD (medium risk, needs the categoriaId-existence-check path scrutinized) and UI (needs the error-surfacing and no-optimistic-apply behavior scrutinized).

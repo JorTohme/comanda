@@ -93,8 +93,59 @@ phases:
           orchestrator to push and open PR #4 (base:
           iter1-catalogo-02-categorias-platos-crud), and to un-draft the
           tracker PR (#1) once this PR merges since it closes the change.
+      - pr: iter1-catalogo-03-shared-contract-admin-ui
+        phases_done: [6, 7, 8]
+        pr_url: pending
+        base_branch: iter1-catalogo-02-categorias-platos-crud
+        note: >
+          Post-verify fix (CRITICAL-1 from verify-report.md): the global
+          ValidationPipe was silently no-op'ing under pnpm --filter api dev
+          because tsx watch (esbuild) never emits design:paramtypes metadata
+          for @Body() controller-method parameters — the same tsx/esbuild
+          decorator-metadata gap already found and partially fixed for
+          constructor DI earlier in this PR, but never generalized. Fixed
+          the root cause by replacing the dev runner: apps/api/package.json
+          dev script changed from `tsx watch src/main.ts` to
+          `nest start --watch`; added @nestjs/cli devDependency and
+          apps/api/nest-cli.json (sourceRoot src, tsConfigPath
+          tsconfig.json) — Nest CLI's default tsc-based builder emits full
+          decorator metadata, matching pnpm build exactly. Removed the
+          now-unused tsx devDependency; pnpm-lock.yaml updated. Regression
+          proven live: ran pnpm --filter api dev (now nest start --watch)
+          against local Postgres 16, curled POST /categorias {} -> 400
+          (nombre should not be empty, nombre must be a string),
+          POST /platos {} -> 400 (multiple field errors including
+          categoriaId must be a UUID), POST /platos with precio 15.5 and a
+          real-shaped categoriaId -> 400 (precio must be an integer
+          number), POST /categorias with an unknown field -> 400 (property
+          hackerField should not exist) — all four previously
+          500'd/201'd silently under the buggy tsx runner. Full suite
+          re-verified green after the fix: pnpm --filter api test 16/16,
+          pnpm --filter shared test 8/8, pnpm turbo run lint 5/5 tasks,
+          pnpm turbo run build 4/4 tasks. Committed as a separate
+          fix(api) commit on branch iter1-catalogo-03-shared-contract-admin-ui,
+          not pushed — orchestrator to push and re-run sdd-verify.
+          openspec/changes/iter1-catalogo/specs/ and design.md remain
+          absent from this branch (confirmed, unchanged from WARNING-3;
+          they exist only on the iter1-catalogo tracker branch tip) — no
+          action taken here per orchestrator instruction, flagged for the
+          archive-time merge/rebase.
   verify:
-    status: pending
+    status: done
+    verify_report: openspec/changes/iter1-catalogo/verify-report.md
+    verdict: fail
+    note: >
+      16/16 requirements and 27/27 scenarios compliant against the shipped
+      production artifact and full automated suite (24/24 tests, build, lint
+      green). One unaddressed CRITICAL finding: the global ValidationPipe
+      silently no-ops under pnpm --filter api dev (tsx/esbuild strips
+      controller-method decorator metadata, same root cause as the already-
+      fixed constructor-DI bug from PR3, but never generalized to
+      ValidationPipe). Confirmed live: missing/empty nombre, float precio,
+      and unknown-field payloads are all wrongly accepted (or 500) under
+      pnpm --filter api dev, while pnpm build + pnpm start (tsc, real
+      metadata) correctly rejects all of them with 400. Recommend fixing
+      before archive.
   archive:
     status: pending
 open_decisions:
@@ -106,4 +157,4 @@ open_decisions:
     question: "¿Corremos sdd-research antes de la propuesta?"
     status: confirmed
     answer: "Saltear — decisiones internas, sin necesidad de evidencia externa nueva."
-next_recommended: sdd-verify
+next_recommended: sdd-apply-fix
