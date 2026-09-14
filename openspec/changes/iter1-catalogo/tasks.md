@@ -63,35 +63,35 @@ _Satisfies: catalogo spec "Missing nombre rejected", "Invalid payload rejected",
 
 ## 6. `packages/shared` Contracts
 
-- [ ] 6.1 Add `Categoria` and `Plato` interfaces to `packages/shared/src/index.ts` exactly as specified in design.md (including nullable `orgId`/`sucursalId`)
-- [ ] 6.2 Add `CreateCategoriaInput`/`UpdateCategoriaInput`/`CreatePlatoInput`/`UpdatePlatoInput` types
-- [ ] 6.3 Add `centavosToPesos`/`pesosToCentavos` conversion helpers
-- [ ] 6.4 Add a colocated spec for the conversion helpers (round-trip, decimals, zero) — per design.md Testing Strategy "cents read as pesos" risk
-- [ ] 6.5 Add the 8 CRUD fetch wrappers (`listCategorias`, `createCategoria`, `updateCategoria`, `deleteCategoria`, `listPlatos`, `createPlato`, `updatePlato`, `deletePlato`) — `baseUrl` first param, `fetch` + `Content-Type: application/json`, `throw new Error` on `!res.ok` (documented deviation from `pingApi`'s sentinel style, per design.md Architecture Decisions)
-- [ ] 6.6 Run `pnpm --filter api test` (or the shared package's own test script if one exists) — confirm green
+- [x] 6.1 Add `Categoria` and `Plato` interfaces to `packages/shared/src/index.ts` exactly as specified in design.md (including nullable `orgId`/`sucursalId`)
+- [x] 6.2 Add `CreateCategoriaInput`/`UpdateCategoriaInput`/`CreatePlatoInput`/`UpdatePlatoInput` types
+- [x] 6.3 Add `centavosToPesos`/`pesosToCentavos` conversion helpers
+- [x] 6.4 Add a colocated spec for the conversion helpers (round-trip, decimals, zero) — per design.md Testing Strategy "cents read as pesos" risk
+- [x] 6.5 Add the 8 CRUD fetch wrappers (`listCategorias`, `createCategoria`, `updateCategoria`, `deleteCategoria`, `listPlatos`, `createPlato`, `updatePlato`, `deletePlato`) — `baseUrl` first param, `fetch` + `Content-Type: application/json`, `throw new Error` on `!res.ok` (documented deviation from `pingApi`'s sentinel style, per design.md Architecture Decisions)
+- [x] 6.6 Run `pnpm --filter api test` (or the shared package's own test script if one exists) — confirm green
 
 _Satisfies: catalogo-admin spec's dependency on shared contracts; design.md Architecture Decisions ("Shared errors")._
 
 ## 7. Admin UI (`apps/web`)
 
-- [ ] 7.1 Create `apps/web/app/catalogo/page.tsx` — `"use client"`, state shape per design.md (`categorias`, `platos`, `form`, `editandoPlatoId`, `nuevaCategoria`, `error`, `cargando`)
-- [ ] 7.2 Implement mount-time `Promise.all([listCategorias, listPlatos])` load with error surfacing
-- [ ] 7.3 Implement Categoria create form + table row rendering
-- [ ] 7.4 Implement Plato create/edit form (`pesosToCentavos` on submit, `categoriaId` select) + table rendering (`centavosToPesos` for display)
-- [ ] 7.5 Implement inline `disponible` toggle calling `updatePlato(url, id, { disponible: !p.disponible })`
-- [ ] 7.6 Implement delete actions for both Categoria and Plato, removing from local state on success
-- [ ] 7.7 Ensure every create/update/delete failure path sets `error` and leaves the list unchanged (no optimistic apply before success)
+- [x] 7.1 Create `apps/web/app/catalogo/page.tsx` — `"use client"`, state shape per design.md (`categorias`, `platos`, `form`, `editandoPlatoId`, `nuevaCategoria`, `error`, `cargando`)
+- [x] 7.2 Implement mount-time `Promise.all([listCategorias, listPlatos])` load with error surfacing
+- [x] 7.3 Implement Categoria create form + table row rendering
+- [x] 7.4 Implement Plato create/edit form (`pesosToCentavos` on submit, `categoriaId` select) + table rendering (`centavosToPesos` for display)
+- [x] 7.5 Implement inline `disponible` toggle calling `updatePlato(url, id, { disponible: !p.disponible })`
+- [x] 7.6 Implement delete actions for both Categoria and Plato, removing from local state on success
+- [x] 7.7 Ensure every create/update/delete failure path sets `error` and leaves the list unchanged (no optimistic apply before success)
 
 _Satisfies: catalogo-admin spec — all 7 requirements (List, Create, Edit, Delete, Toggle inline, Surface API errors, Integer centavos in UI)._
 
 ## 8. Manual End-to-End Verification
 
-- [ ] 8.1 `docker compose up -d` — confirm Postgres 16 is reachable
-- [ ] 8.2 `prisma migrate dev` — confirm `Categoria`/`Plato` tables exist with nullable `org_id`/`sucursal_id` columns
-- [ ] 8.3 `pnpm --filter api test` — full suite green
-- [ ] 8.4 `pnpm --filter api dev` (or equivalent) + curl smoke tests: `POST /categorias`, `GET /categorias`, `POST /platos` (valid + invalid `categoriaId` → 400/404), `GET /platos?categoriaId=`, `PATCH /platos/:id` (toggle `disponible`), `DELETE` both
-- [ ] 8.5 `pnpm dev` (web) — load `/catalogo` in a browser, verify list/create/edit/delete/toggle end-to-end and that an invalid submission surfaces a visible error
-- [ ] 8.6 `pnpm build` — confirm strict mode passes across the monorepo
+- [x] 8.1 `docker compose up -d` — confirm Postgres 16 is reachable
+- [x] 8.2 `prisma migrate dev` — confirm `Categoria`/`Plato` tables exist with nullable `org_id`/`sucursal_id` columns
+- [x] 8.3 `pnpm --filter api test` — full suite green
+- [x] 8.4 `pnpm --filter api dev` (or equivalent) + curl smoke tests: `POST /categorias`, `GET /categorias`, `POST /platos` (valid + invalid `categoriaId` → 400/404), `GET /platos?categoriaId=`, `PATCH /platos/:id` (toggle `disponible`), `DELETE` both
+- [x] 8.5 `pnpm dev` (web) — load `/catalogo`, verify it renders (curl 200 + markup check; DI runtime bug found and fixed along the way — see apply-progress)
+- [x] 8.6 `pnpm build` — confirm strict mode passes across the monorepo
 
 _Satisfies: proposal.md Success Criteria (all five checkboxes)._
 

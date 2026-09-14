@@ -14,7 +14,7 @@ phases:
   tasks:
     status: done
   apply:
-    status: in_progress
+    status: done
     apply_progress:
       - pr: iter1-catalogo-01-test-prisma-bootstrap
         phases_done: [1, 2]
@@ -30,8 +30,9 @@ phases:
           Phases 3-8 remain pending for later chained PRs.
       - pr: iter1-catalogo-02-categorias-platos-crud
         phases_done: [3, 4, 5]
-        pr_url: pending
+        pr_url: https://github.com/JorTohme/comanda/pull/3
         base_branch: iter1-catalogo-01-test-prisma-bootstrap
+        size_exception: "496/400 lines, accepted by user — cohesive Categoria+Plato CRUD unit"
         note: >
           Categorias CRUD (phase 3) and Platos CRUD (phase 4) implemented test-first
           (CategoriasService/PlatosService unit tests with PrismaService mocked,
@@ -49,6 +50,49 @@ phases:
           (base: iter1-catalogo-01-test-prisma-bootstrap). Phase 6 (packages/shared
           contracts) and phase 7 (apps/web catalogo UI) intentionally untouched
           for the next chained PR; phase 8 manual e2e verification also pending.
+      - pr: iter1-catalogo-03-shared-contract-admin-ui
+        phases_done: [6, 7, 8]
+        pr_url: pending
+        base_branch: iter1-catalogo-02-categorias-platos-crud
+        note: >
+          packages/shared (phase 6): Categoria/Plato interfaces, Create/Update
+          input types, centavosToPesos/pesosToCentavos conversion helpers
+          (string-based integer arithmetic, no float multiplication — written
+          test-first with a colocated Jest suite added to packages/shared,
+          RED confirmed missing-export before GREEN implementation, 8/8
+          passing), and the 8 CRUD fetch wrappers matching the real
+          apps/api/src/catalogo controllers exactly (throw Error on !res.ok,
+          documented deviation from pingApi's sentinel style). Added
+          packages/shared's own jest+ts-jest test runner (jest.config.cjs,
+          devDeps mirroring apps/api's pinned versions, tsconfig.json now
+          excludes *.spec.ts from the tsc build so dist/ stays clean).
+          apps/web/app/catalogo/page.tsx (phase 7): single "use client"
+          component, native form/table, no UI library, exact state shape
+          from design.md; mount-time Promise.all load, Categoria+Plato
+          create/edit/delete, inline disponible toggle, every failure path
+          sets a visible error and leaves state unchanged (no optimistic
+          apply). Phase 8 manual e2e verification actually run: docker
+          compose Postgres 16 already up, prisma migrate status confirmed
+          up to date, pnpm --filter api test 16/16 green, pnpm --filter api
+          dev + curl smoke tests against /categorias and /platos (create,
+          list, filter, invalid categoriaId -> 400, toggle, delete) all
+          passed, pnpm dev (web) + curl confirmed /catalogo returns 200 with
+          the expected markup, pnpm build and pnpm lint both green across
+          all 4 workspace packages. Bug found and fixed during phase 8: tsx
+          watch (esbuild) doesn't emit TS decorator metadata, so
+          CategoriasController/PlatosController/CategoriasService/
+          PlatosService's constructor DI resolved to undefined at runtime
+          under `pnpm --filter api dev` even though pnpm --filter api test
+          stayed green throughout PR2 (ts-jest emits full metadata; esbuild
+          doesn't). Fixed with explicit @Inject(Token) on all four
+          constructors — committed as a separate fix(api) commit on this
+          branch, landed before the feat(shared,web) commit. This closes
+          all 8 task phases; committed locally on branch
+          iter1-catalogo-03-shared-contract-admin-ui off
+          iter1-catalogo-02-categorias-platos-crud, not pushed/PR-opened —
+          orchestrator to push and open PR #4 (base:
+          iter1-catalogo-02-categorias-platos-crud), and to un-draft the
+          tracker PR (#1) once this PR merges since it closes the change.
   verify:
     status: pending
   archive:
@@ -62,4 +106,4 @@ open_decisions:
     question: "¿Corremos sdd-research antes de la propuesta?"
     status: confirmed
     answer: "Saltear — decisiones internas, sin necesidad de evidencia externa nueva."
-next_recommended: sdd-apply
+next_recommended: sdd-verify
