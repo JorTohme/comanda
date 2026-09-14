@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreatePlatoDto } from "./dto/create-plato.dto";
 import { UpdatePlatoDto } from "./dto/update-plato.dto";
@@ -9,7 +9,8 @@ function isNotFoundError(error: unknown): boolean {
 
 @Injectable()
 export class PlatosService {
-  constructor(private readonly prisma: PrismaService) {}
+  // ponytail: explicit @Inject token — see categorias.controller.ts for why.
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   private async assertCategoriaExists(categoriaId: string) {
     const categoria = await this.prisma.categoria.findUnique({ where: { id: categoriaId } });

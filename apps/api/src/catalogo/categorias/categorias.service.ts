@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCategoriaDto } from "./dto/create-categoria.dto";
 import { UpdateCategoriaDto } from "./dto/update-categoria.dto";
@@ -9,7 +9,8 @@ function isNotFoundError(error: unknown): boolean {
 
 @Injectable()
 export class CategoriasService {
-  constructor(private readonly prisma: PrismaService) {}
+  // ponytail: explicit @Inject token — see categorias.controller.ts for why.
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   create(dto: CreateCategoriaDto) {
     return this.prisma.categoria.create({ data: dto });
