@@ -1,0 +1,122 @@
+import { Test } from "@nestjs/testing";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { PlatosService } from "./platos.service";
+import { PrismaService } from "../../prisma/prisma.service";
+
+describe("PlatosService", () => {
+  let service: PlatosService;
+  const prisma = {
+    plato: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    categoria: {
+      findUnique: jest.fn(),
+    },
+  };
+
+  beforeEach(async () => {
+    jest.resetAllMocks();
+    const moduleRef = await Test.createTestingModule({
+      providers: [PlatosService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+
+    service = moduleRef.get(PlatosService);
+  });
+
+  it("creates a plato defaulting disponible to true when omitted", async () => {
+    prisma.categoria.findUnique.mockResolvedValue({ id: "cat-1", nombre: "Bebidas" });
+    const created = {
+      id: "plato-1",
+      nombre: "Agua",
+      precio: 1000,
+      disponible: true,
+      categoriaId: "cat-1",
+    };
+    prisma.plato.create.mockResolvedValue(created);
+
+    const result = await service.create({ nombre: "Agua", precio: 1000, categoriaId: "cat-1" });
+
+    expect(prisma.plato.create).toHaveBeenCalledWith({
+      data: { nombre: "Agua", precio: 1000, categoriaId: "cat-1", disponible: true },
+    });
+    expect(result.disponible).toBe(true);
+  });
+
+  it("rejects creation when categoriaId does not reference an existing categoria", async () => {
+    prisma.categoria.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.create({ nombre: "Agua", precio: 1000, categoriaId: "missing-cat" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.plato.create).not.toHaveBeenCalled();
+  });
+
+  it("lists all platos", async () => {
+    const all = [{ id: "plato-1" }, { id: "plato-2" }];
+    prisma.plato.findMany.mockResolvedValue(all);
+
+    const result = await service.findAll();
+
+    expect(prisma.plato.findMany).toHaveBeenCalledWith({ where: {} });
+    expect(result).toHaveLength(2);
+  });
+
+  it("lists platos filtered by categoriaId", async () => {
+    const filtered = [{ id: "plato-1", categoriaId: "cat-1" }];
+    prisma.plato.findMany.mockResolvedValue(filtered);
+
+    const result = await service.findAll("cat-1");
+
+    expect(prisma.plato.findMany).toHaveBeenCalledWith({ where: { categoriaId: "cat-1" } });
+    expect(result).toEqual(filtered);
+  });
+
+  it("toggles disponible on update", async () => {
+    const updated = { id: "plato-1", disponible: false };
+    prisma.plato.update.mockResolvedValue(updated);
+
+    const result = await service.update("plato-1", { disponible: false });
+
+    expect(prisma.plato.update).toHaveBeenCalledWith({
+      where: { id: "plato-1" },
+      data: { disponible: false },
+    });
+    expect(result.disponible).toBe(false);
+  });
+
+  it("throws NotFoundException when updating a nonexistent plato", async () => {
+    prisma.plato.update.mockRejectedValue({ code: "P2025" });
+
+    await expect(service.update("missing-id", { disponible: false })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it("rejects update when categoriaId does not reference an existing categoria", async () => {
+    prisma.categoria.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.update("plato-1", { categoriaId: "missing-cat" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.plato.update).not.toHaveBeenCalled();
+  });
+
+  it("deletes an existing plato", async () => {
+    const deleted = { id: "plato-1" };
+    prisma.plato.delete.mockResolvedValue(deleted);
+
+    const result = await service.remove("plato-1");
+
+    expect(prisma.plato.delete).toHaveBeenCalledWith({ where: { id: "plato-1" } });
+    expect(result).toEqual(deleted);
+  });
+
+  it("throws NotFoundException when deleting a nonexistent plato", async () => {
+    prisma.plato.delete.mockRejectedValue({ code: "P2025" });
+
+    await expect(service.remove("missing-id")).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

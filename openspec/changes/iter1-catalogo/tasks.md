@@ -29,35 +29,35 @@ _Satisfies: catalogo spec persistence prerequisites; design.md Architecture Deci
 
 ## 3. Categorias (test-first)
 
-- [ ] 3.1 Write `apps/api/src/catalogo/categorias/categorias.service.spec.ts` — failing tests against a mocked `PrismaService` for: create (persists + returns), list (returns all), update existing (200-path), update nonexistent (throws/404-mappable), delete existing, delete nonexistent
-- [ ] 3.2 Confirm the new spec fails for the right reason (module doesn't exist yet) — `pnpm --filter api test`
-- [ ] 3.3 Create `apps/api/src/catalogo/categorias/categorias.service.ts` implementing create/findAll/update/delete against `PrismaService`, throwing `NotFoundException` on missing id — make 3.1 pass
-- [ ] 3.4 Create `apps/api/src/catalogo/categorias/dto/create-categoria.dto.ts` (`@IsString @IsNotEmpty nombre`) and `dto/update-categoria.dto.ts` (same field, `@IsOptional()`)
-- [ ] 3.5 Create `apps/api/src/catalogo/categorias/categorias.controller.ts` — `POST /categorias`, `GET /categorias`, `PATCH /categorias/:id`, `DELETE /categorias/:id`, mirroring `health/`'s controller shape
-- [ ] 3.6 Create `apps/api/src/catalogo/categorias/categorias.module.ts`
-- [ ] 3.7 Wire `CategoriasModule` into `apps/api/src/app.module.ts`
-- [ ] 3.8 Run `pnpm --filter api test` — confirm all Categoria tests pass
+- [x] 3.1 Write `apps/api/src/catalogo/categorias/categorias.service.spec.ts` — failing tests against a mocked `PrismaService` for: create (persists + returns), list (returns all), update existing (200-path), update nonexistent (throws/404-mappable), delete existing, delete nonexistent
+- [x] 3.2 Confirm the new spec fails for the right reason (module doesn't exist yet) — `pnpm --filter api test`
+- [x] 3.3 Create `apps/api/src/catalogo/categorias/categorias.service.ts` implementing create/findAll/update/delete against `PrismaService`, throwing `NotFoundException` on missing id — make 3.1 pass
+- [x] 3.4 Create `apps/api/src/catalogo/categorias/dto/create-categoria.dto.ts` (`@IsString @IsNotEmpty nombre`) and `dto/update-categoria.dto.ts` (same field, `@IsOptional()`)
+- [x] 3.5 Create `apps/api/src/catalogo/categorias/categorias.controller.ts` — `POST /categorias`, `GET /categorias`, `PATCH /categorias/:id`, `DELETE /categorias/:id`, mirroring `health/`'s controller shape
+- [x] 3.6 Create `apps/api/src/catalogo/categorias/categorias.module.ts`
+- [x] 3.7 Wire `CategoriasModule` into `apps/api/src/app.module.ts`
+- [x] 3.8 Run `pnpm --filter api test` — confirm all Categoria tests pass
 
 _Satisfies: catalogo spec Requirements "Create/List/Update/Delete Categoria"._
 
 ## 4. Platos (test-first)
 
-- [ ] 4.1 Write `apps/api/src/catalogo/platos/platos.service.spec.ts` — failing tests against a mocked `PrismaService` for: create with default `disponible=true`, create rejects when `categoriaId` doesn't exist (service surfaces a 400/404-mappable error, per catalogo spec "Invalid payload rejected"), list all, list filtered by `categoriaId`, update toggling `disponible`, update nonexistent, update with invalid `precio`/`categoriaId` rejected, delete existing, delete nonexistent
-- [ ] 4.2 Confirm the new spec fails for the right reason — `pnpm --filter api test`
-- [ ] 4.3 Create `apps/api/src/catalogo/platos/platos.service.ts` implementing create (validates `categoriaId` exists via Prisma before insert)/findAll (optional `categoriaId` filter)/update/delete — make 4.1 pass
-- [ ] 4.4 Create `apps/api/src/catalogo/platos/dto/create-plato.dto.ts` (`nombre: @IsString @IsNotEmpty`, `precio: @IsInt @Min(0)`, `categoriaId: @IsUUID`, `disponible?: @IsOptional @IsBoolean`) and `dto/update-plato.dto.ts` (same fields, all `@IsOptional()`)
-- [ ] 4.5 Create `apps/api/src/catalogo/platos/platos.controller.ts` — `POST /platos`, `GET /platos` (+ `?categoriaId=` query), `PATCH /platos/:id`, `DELETE /platos/:id`
-- [ ] 4.6 Create `apps/api/src/catalogo/platos/platos.module.ts`
-- [ ] 4.7 Wire `PlatosModule` into `apps/api/src/app.module.ts`
-- [ ] 4.8 Run `pnpm --filter api test` — confirm all Plato tests pass
+- [x] 4.1 Write `apps/api/src/catalogo/platos/platos.service.spec.ts` — failing tests against a mocked `PrismaService` for: create with default `disponible=true`, create rejects when `categoriaId` doesn't exist (service surfaces a 400/404-mappable error, per catalogo spec "Invalid payload rejected"), list all, list filtered by `categoriaId`, update toggling `disponible`, update nonexistent, update with invalid `precio`/`categoriaId` rejected, delete existing, delete nonexistent
+- [x] 4.2 Confirm the new spec fails for the right reason — `pnpm --filter api test`
+- [x] 4.3 Create `apps/api/src/catalogo/platos/platos.service.ts` implementing create (validates `categoriaId` exists via Prisma before insert)/findAll (optional `categoriaId` filter)/update/delete — make 4.1 pass
+- [x] 4.4 Create `apps/api/src/catalogo/platos/dto/create-plato.dto.ts` (`nombre: @IsString @IsNotEmpty`, `precio: @IsInt @Min(0)`, `categoriaId: @IsUUID`, `disponible?: @IsOptional @IsBoolean`) and `dto/update-plato.dto.ts` (same fields, all `@IsOptional()`)
+- [x] 4.5 Create `apps/api/src/catalogo/platos/platos.controller.ts` — `POST /platos`, `GET /platos` (+ `?categoriaId=` query), `PATCH /platos/:id`, `DELETE /platos/:id`
+- [x] 4.6 Create `apps/api/src/catalogo/platos/platos.module.ts`
+- [x] 4.7 Wire `PlatosModule` into `apps/api/src/app.module.ts`
+- [x] 4.8 Run `pnpm --filter api test` — confirm all Plato tests pass
 
 _Satisfies: catalogo spec Requirements "Create/List/Update/Delete Plato", "Precio as integer centavos"._
 
 ## 5. Global Validation Wiring
 
-- [ ] 5.1 Add `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` to `apps/api/src/main.ts`
-- [ ] 5.2 Confirm all four DTOs from phases 3–4 are correctly decorated (re-check against design.md's DTO spec — no missing `@IsOptional()` on update DTOs)
-- [ ] 5.3 Run `pnpm --filter api test` — confirm still green
+- [x] 5.1 Add `app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))` to `apps/api/src/main.ts`
+- [x] 5.2 Confirm all four DTOs from phases 3–4 are correctly decorated (re-check against design.md's DTO spec — no missing `@IsOptional()` on update DTOs)
+- [x] 5.3 Run `pnpm --filter api test` — confirm still green
 
 _Satisfies: catalogo spec "Missing nombre rejected", "Invalid payload rejected", "Non-integer precio rejected"; design.md Threat Matrix (HTTP body trust boundary)._
 
