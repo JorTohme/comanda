@@ -19,3 +19,14 @@ build/
 .env
 .env.local
 .env.*.local
+
+# test coverage
+coverage/
+
+# codegraph (local index, regenerated per checkout)
+.codegraph/
+
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
