@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Categoria {
+  id         String   @id @default(uuid())
+  nombre     String
+  orgId      String?
+  sucursalId String?
+  platos     Plato[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Plato {
+  id          String    @id @default(uuid())
+  nombre      String
+  precio      Int
+  disponible  Boolean   @default(true)
+  categoriaId String
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+  orgId       String?
+  sucursalId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}

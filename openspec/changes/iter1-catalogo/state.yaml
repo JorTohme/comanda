@@ -1,0 +1,167 @@
+change: iter1-catalogo
+schema: spec-driven
+phases:
+  explore:
+    status: done
+  research:
+    status: skipped
+  proposal:
+    status: done
+  specs:
+    status: done
+  design:
+    status: done
+  tasks:
+    status: done
+  apply:
+    status: done
+    apply_progress:
+      - pr: iter1-catalogo-01-test-prisma-bootstrap
+        phases_done: [1, 2]
+        pr_url: https://github.com/JorTohme/comanda/pull/2
+        tracker_pr_url: https://github.com/JorTohme/comanda/pull/1
+        note: >
+          Jest runner (phase 1) and Prisma+@nestjs/config bootstrap (phase 2)
+          complete and committed on branch iter1-catalogo-01-test-prisma-bootstrap
+          off tracker branch iter1-catalogo. pnpm --filter api test green.
+          Migration 20260914143433_init_catalogo applied against local Postgres 16.
+          Lint+build verified green on this branch before opening the PR.
+          Opened as PR #2 (base: tracker branch iter1-catalogo, PR #1 draft/no-merge).
+          Phases 3-8 remain pending for later chained PRs.
+      - pr: iter1-catalogo-02-categorias-platos-crud
+        phases_done: [3, 4, 5]
+        pr_url: https://github.com/JorTohme/comanda/pull/3
+        base_branch: iter1-catalogo-01-test-prisma-bootstrap
+        size_exception: "496/400 lines, accepted by user — cohesive Categoria+Plato CRUD unit"
+        note: >
+          Categorias CRUD (phase 3) and Platos CRUD (phase 4) implemented test-first
+          (CategoriasService/PlatosService unit tests with PrismaService mocked,
+          RED confirmed before GREEN implementation), controllers+modules mirroring
+          health/'s shape, both modules wired into app.module.ts. Global
+          ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+          wired in main.ts (phase 5). PlatosService.create/update validate categoriaId
+          existence via Prisma and throw BadRequestException (400) when missing;
+          update/remove map Prisma P2025 to NotFoundException (404) for both
+          Categorias and Platos. pnpm --filter api test green (16/16, 3 suites).
+          pnpm --filter api lint and build both green. Branch
+          iter1-catalogo-02-categorias-platos-crud created off
+          iter1-catalogo-01-test-prisma-bootstrap (not off tracker/main), committed
+          locally, not pushed/PR-opened — orchestrator to push and open PR #3
+          (base: iter1-catalogo-01-test-prisma-bootstrap). Phase 6 (packages/shared
+          contracts) and phase 7 (apps/web catalogo UI) intentionally untouched
+          for the next chained PR; phase 8 manual e2e verification also pending.
+      - pr: iter1-catalogo-03-shared-contract-admin-ui
+        phases_done: [6, 7, 8]
+        pr_url: pending
+        base_branch: iter1-catalogo-02-categorias-platos-crud
+        note: >
+          packages/shared (phase 6): Categoria/Plato interfaces, Create/Update
+          input types, centavosToPesos/pesosToCentavos conversion helpers
+          (string-based integer arithmetic, no float multiplication — written
+          test-first with a colocated Jest suite added to packages/shared,
+          RED confirmed missing-export before GREEN implementation, 8/8
+          passing), and the 8 CRUD fetch wrappers matching the real
+          apps/api/src/catalogo controllers exactly (throw Error on !res.ok,
+          documented deviation from pingApi's sentinel style). Added
+          packages/shared's own jest+ts-jest test runner (jest.config.cjs,
+          devDeps mirroring apps/api's pinned versions, tsconfig.json now
+          excludes *.spec.ts from the tsc build so dist/ stays clean).
+          apps/web/app/catalogo/page.tsx (phase 7): single "use client"
+          component, native form/table, no UI library, exact state shape
+          from design.md; mount-time Promise.all load, Categoria+Plato
+          create/edit/delete, inline disponible toggle, every failure path
+          sets a visible error and leaves state unchanged (no optimistic
+          apply). Phase 8 manual e2e verification actually run: docker
+          compose Postgres 16 already up, prisma migrate status confirmed
+          up to date, pnpm --filter api test 16/16 green, pnpm --filter api
+          dev + curl smoke tests against /categorias and /platos (create,
+          list, filter, invalid categoriaId -> 400, toggle, delete) all
+          passed, pnpm dev (web) + curl confirmed /catalogo returns 200 with
+          the expected markup, pnpm build and pnpm lint both green across
+          all 4 workspace packages. Bug found and fixed during phase 8: tsx
+          watch (esbuild) doesn't emit TS decorator metadata, so
+          CategoriasController/PlatosController/CategoriasService/
+          PlatosService's constructor DI resolved to undefined at runtime
+          under `pnpm --filter api dev` even though pnpm --filter api test
+          stayed green throughout PR2 (ts-jest emits full metadata; esbuild
+          doesn't). Fixed with explicit @Inject(Token) on all four
+          constructors — committed as a separate fix(api) commit on this
+          branch, landed before the feat(shared,web) commit. This closes
+          all 8 task phases; committed locally on branch
+          iter1-catalogo-03-shared-contract-admin-ui off
+          iter1-catalogo-02-categorias-platos-crud, not pushed/PR-opened —
+          orchestrator to push and open PR #4 (base:
+          iter1-catalogo-02-categorias-platos-crud), and to un-draft the
+          tracker PR (#1) once this PR merges since it closes the change.
+      - pr: iter1-catalogo-03-shared-contract-admin-ui
+        phases_done: [6, 7, 8]
+        pr_url: pending
+        base_branch: iter1-catalogo-02-categorias-platos-crud
+        note: >
+          Post-verify fix (CRITICAL-1 from verify-report.md): the global
+          ValidationPipe was silently no-op'ing under pnpm --filter api dev
+          because tsx watch (esbuild) never emits design:paramtypes metadata
+          for @Body() controller-method parameters — the same tsx/esbuild
+          decorator-metadata gap already found and partially fixed for
+          constructor DI earlier in this PR, but never generalized. Fixed
+          the root cause by replacing the dev runner: apps/api/package.json
+          dev script changed from `tsx watch src/main.ts` to
+          `nest start --watch`; added @nestjs/cli devDependency and
+          apps/api/nest-cli.json (sourceRoot src, tsConfigPath
+          tsconfig.json) — Nest CLI's default tsc-based builder emits full
+          decorator metadata, matching pnpm build exactly. Removed the
+          now-unused tsx devDependency; pnpm-lock.yaml updated. Regression
+          proven live: ran pnpm --filter api dev (now nest start --watch)
+          against local Postgres 16, curled POST /categorias {} -> 400
+          (nombre should not be empty, nombre must be a string),
+          POST /platos {} -> 400 (multiple field errors including
+          categoriaId must be a UUID), POST /platos with precio 15.5 and a
+          real-shaped categoriaId -> 400 (precio must be an integer
+          number), POST /categorias with an unknown field -> 400 (property
+          hackerField should not exist) — all four previously
+          500'd/201'd silently under the buggy tsx runner. Full suite
+          re-verified green after the fix: pnpm --filter api test 16/16,
+          pnpm --filter shared test 8/8, pnpm turbo run lint 5/5 tasks,
+          pnpm turbo run build 4/4 tasks. Committed as a separate
+          fix(api) commit on branch iter1-catalogo-03-shared-contract-admin-ui,
+          not pushed — orchestrator to push and re-run sdd-verify.
+          openspec/changes/iter1-catalogo/specs/ and design.md remain
+          absent from this branch (confirmed, unchanged from WARNING-3;
+          they exist only on the iter1-catalogo tracker branch tip) — no
+          action taken here per orchestrator instruction, flagged for the
+          archive-time merge/rebase.
+  verify:
+    status: done
+    verify_report: openspec/changes/iter1-catalogo/verify-report.md
+    verdict: pass_with_warnings
+    note: >
+      Re-verified 2026-09-14 on HEAD 8366ba0 after the CRITICAL-1 fix (dev
+      script switched from tsx watch to nest start --watch via @nestjs/cli).
+      Independently confirmed: full suite re-run fresh (not cache-replayed)
+      -- pnpm --filter api test 16/16, pnpm --filter shared test 8/8, pnpm
+      turbo run lint --force 5/5, pnpm turbo run build --force 4/4, all
+      exit 0. Started pnpm --filter api dev against local Postgres 16 and
+      sent 3 invalid payloads (missing-field-plus-extra-field, wrong-type
+      string precio, forbidden extra field) deliberately varied from the
+      fix agent's own regression report -- all 3 returned proper 400s with
+      correct class-validator messages, plus a valid-payload sanity check
+      returned 201. CRITICAL-1 CLOSED. WARNING-1 (catalogo-admin has no
+      automated tests) re-checked, still accurately describes an accepted
+      gap, unchanged. WARNING-3 (specs/design.md absent from this branch)
+      re-checked and RESOLVED: specs/ and design.md are now present in this
+      branch's working tree (cherry-picked). WARNING-2 (TDD evidence format)
+      left unchanged, out of scope for this re-verify. Report validated via
+      gentle-ai sdd-verify-validate (valid: true). Verdict flipped from FAIL
+      to PASS WITH WARNINGS -- cleared to proceed to archive.
+  archive:
+    status: pending
+open_decisions:
+  - id: tenancy-columns
+    question: "¿org_id/sucursal_id nullable-y-sin-forzar en Categoria/Plato desde ya, o se agregan recién en la iteración de tenancy/auth?"
+    status: confirmed
+    answer: "Nullable sin forzar: columnas listas en el schema desde el día uno, sin poblarlas de verdad hasta que exista auth/tenancy."
+  - id: research
+    question: "¿Corremos sdd-research antes de la propuesta?"
+    status: confirmed
+    answer: "Saltear — decisiones internas, sin necesidad de evidencia externa nueva."
+next_recommended: sdd-archive
