@@ -1,18 +1,71 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:710b5a822e5cc7c815e88bdf3c64114c5de3c36e7d8eaac1878d867136a749db
-verdict: fail
-blockers: 1
-critical_findings: 1
+evidence_revision: sha256:22590c3d5ae0097df49f38f27c04e658937d536df147ae618147c6fdd2eb6814
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
 requirements: 16/16
 scenarios: 27/27
 test_command: pnpm --filter api test
 test_exit_code: 0
-test_output_hash: sha256:3c4292fea24e9a0c2f91883fc9787812d44f61174ce7205474680ab986f0a3ee
-build_command: pnpm build
+test_output_hash: sha256:b3196765adfa7d03a1bd5cf5c362a93824049c38ecaffa1a5c6f4345170ec184
+build_command: pnpm turbo run build --force
 build_exit_code: 0
-build_output_hash: sha256:fb3a0f55b0e7a94340196a035eb7fee97afc73fb3a6d96e076b6c1528619b377
+build_output_hash: sha256:6be1d965e8361421314961315681e20bdf1b9a7f07d2979106f089eb496bff40
 ```
+
+## Re-verification (2026-09-14)
+
+**Change**: iter1-catalogo
+**Branch verified**: iter1-catalogo-03-shared-contract-admin-ui (HEAD 8366ba0)
+**Trigger**: fix agent closed CRITICAL-1 from the original verify pass below (dev script switched from tsx watch to nest start --watch, backed by a newly-added @nestjs/cli devDependency and apps/api/nest-cli.json). This section is an independent re-verification of that fix, not a rubber stamp of the fix agent own regression report.
+
+### Full check suite -- re-run fresh by this pass
+
+| Command | Result | Notes |
+|---|---|---|
+| pnpm --filter api test | 16/16 passed, exit 0 | 3 suites (app.smoke, categorias.service, platos.service) |
+| pnpm --filter shared test | 8/8 passed, exit 0 | centavosToPesos/pesosToCentavos + round-trip |
+| pnpm turbo run lint --force | 5/5 tasks successful, exit 0 | Forced cache bypass, not a cache replay -- shared, api, operativa, web (x2 tsc projects) |
+| pnpm turbo run build --force | 4/4 tasks successful, exit 0 | Forced cache bypass; web build includes /catalogo route, 2.82 kB / 90.1 kB First Load JS |
+
+All four commands were run fresh (--force on the two turbo tasks) rather than trusted from cache, specifically so this evidence is this pass own, not a replay of a prior run.
+
+### Independent CRITICAL-1 regression check
+
+Confirmed apps/api/package.json dev script is now nest start --watch, @nestjs/cli is a devDependency, and apps/api/nest-cli.json exists (sourceRoot: src, tsConfigPath: tsconfig.json).
+
+Procedure (independent of the fix agent own report -- different payload shapes were deliberately chosen):
+1. Confirmed local Postgres 16 already running via docker compose ps (container up ~1h, no restart needed).
+2. Confirmed ports 3000/3001 free before starting (no stale processes).
+3. Started pnpm --filter api dev in the background. apps/api/.env does not exist in this working tree (correctly gitignored, no committed secrets) and this session permission rules block writing new .env files, so DATABASE_URL was supplied as an inline environment variable for the dev process instead of creating a local .env -- functionally equivalent to ConfigModule runtime behavior, no application code path changed by this.
+4. Server started cleanly: all CategoriasController/PlatosController routes mapped, Nest application successfully started, listening on http://localhost:3001.
+5. Sent three invalid payloads, each varied from the fix agent own report to make this a real independent check, not a copy-paste confirmation:
+   - POST /categorias with {"foo":"bar"} (missing required nombre combined with an unrelated extra field, not the fix agent plain {}) -> 400, body: {"message":["property foo should not exist","nombre should not be empty","nombre must be a string"],"error":"Bad Request","statusCode":400}
+   - POST /platos with precio as the string "not-a-number" (wrong type, not the fix agent float-precio case) against a categoriaId freshly created in this same run -> 400, body: {"message":["precio must not be less than 0","precio must be an integer number"],"error":"Bad Request","statusCode":400}
+   - POST /categorias with a valid nombre plus a forbidden extra field isAdmin: true -> 400, body: {"message":["property isAdmin should not exist"],"error":"Bad Request","statusCode":400}
+   - Sanity check -- valid POST /platos payload (real nombre, integer precio, real categoriaId) -> 201 (confirms the pipe rejects only invalid input, not everything).
+6. Stopped the dev server; git status --short confirmed a clean working tree (no stray file changes from this verification session; test data landed only in the local dev database).
+
+**Result**: all three invalid payloads returned proper 400 responses with correct class-validator field-level messages -- not 500s, not silent 201s. This independently confirms the same class of defect described in the original CRITICAL-1 finding (decorator metadata missing under the old tsx watch runner, causing the global ValidationPipe to no-op) does not reproduce under the new nest start --watch runner. **CRITICAL-1 is CLOSED**, confirmed by this pass own execution, not by trusting the fix agent prior report.
+
+### WARNING re-checks
+
+- **WARNING-1** (catalogo-admin has no automated tests): re-checked -- apps/web/app/catalogo/page.tsx is still the only file under apps/web/app/catalogo/, no colocated test file exists (no React Testing Library / Playwright in the repo). Still accurately described as a documented, accepted gap (design.md own Testing Strategy designates this layer Manual). **Still open, unchanged, still accepted.**
+- **WARNING-2** (TDD evidence format in state.yaml prose vs. table): out of scope for this re-verify per the task instructions; not re-checked, left as previously recorded (still open).
+- **WARNING-3** (specs/design.md absent from this branch): re-checked -- openspec/changes/iter1-catalogo/design.md, openspec/changes/iter1-catalogo/specs/catalogo/spec.md, and openspec/changes/iter1-catalogo/specs/catalogo-admin/spec.md are now all present directly in this branch working tree (cherry-picked in, confirmed via direct file listing, no git show cross-branch read needed anymore). **RESOLVED -- CLOSED.**
+
+### Updated Verdict
+
+**PASS WITH WARNINGS**
+
+CRITICAL-1 is independently confirmed closed by this pass own fresh test/build execution and its own live dev-server regression check (not a copy of the fix agent curl commands). Nothing new broke: the full automated suite (24/24 tests), lint (5/5), and build (4/4) are all green, freshly re-run rather than cache-replayed. 16/16 requirements and 27/27 scenarios remain compliant, consistent with the original pass below. Two warnings remain open (WARNING-1: accepted, documented gap in admin-UI test coverage; WARNING-2: TDD evidence format deviation, not re-checked this pass) and one warning is now resolved (WARNING-3: specs/design.md branch-hygiene gap, closed). No CRITICAL issues remain. Cleared to proceed to archive.
+
+---
+
+## Original Verification Report (2026-09-14, FAIL -- superseded by the Re-verification above)
+
+*Preserved verbatim as historical audit trail. Do not edit below this line; see the Re-verification section above for the current verdict.*
 
 ## Verification Report
 

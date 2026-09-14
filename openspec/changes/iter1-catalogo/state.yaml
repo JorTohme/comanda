@@ -133,19 +133,26 @@ phases:
   verify:
     status: done
     verify_report: openspec/changes/iter1-catalogo/verify-report.md
-    verdict: fail
+    verdict: pass_with_warnings
     note: >
-      16/16 requirements and 27/27 scenarios compliant against the shipped
-      production artifact and full automated suite (24/24 tests, build, lint
-      green). One unaddressed CRITICAL finding: the global ValidationPipe
-      silently no-ops under pnpm --filter api dev (tsx/esbuild strips
-      controller-method decorator metadata, same root cause as the already-
-      fixed constructor-DI bug from PR3, but never generalized to
-      ValidationPipe). Confirmed live: missing/empty nombre, float precio,
-      and unknown-field payloads are all wrongly accepted (or 500) under
-      pnpm --filter api dev, while pnpm build + pnpm start (tsc, real
-      metadata) correctly rejects all of them with 400. Recommend fixing
-      before archive.
+      Re-verified 2026-09-14 on HEAD 8366ba0 after the CRITICAL-1 fix (dev
+      script switched from tsx watch to nest start --watch via @nestjs/cli).
+      Independently confirmed: full suite re-run fresh (not cache-replayed)
+      -- pnpm --filter api test 16/16, pnpm --filter shared test 8/8, pnpm
+      turbo run lint --force 5/5, pnpm turbo run build --force 4/4, all
+      exit 0. Started pnpm --filter api dev against local Postgres 16 and
+      sent 3 invalid payloads (missing-field-plus-extra-field, wrong-type
+      string precio, forbidden extra field) deliberately varied from the
+      fix agent's own regression report -- all 3 returned proper 400s with
+      correct class-validator messages, plus a valid-payload sanity check
+      returned 201. CRITICAL-1 CLOSED. WARNING-1 (catalogo-admin has no
+      automated tests) re-checked, still accurately describes an accepted
+      gap, unchanged. WARNING-3 (specs/design.md absent from this branch)
+      re-checked and RESOLVED: specs/ and design.md are now present in this
+      branch's working tree (cherry-picked). WARNING-2 (TDD evidence format)
+      left unchanged, out of scope for this re-verify. Report validated via
+      gentle-ai sdd-verify-validate (valid: true). Verdict flipped from FAIL
+      to PASS WITH WARNINGS -- cleared to proceed to archive.
   archive:
     status: pending
 open_decisions:
@@ -157,4 +164,4 @@ open_decisions:
     question: "¿Corremos sdd-research antes de la propuesta?"
     status: confirmed
     answer: "Saltear — decisiones internas, sin necesidad de evidencia externa nueva."
-next_recommended: sdd-apply-fix
+next_recommended: sdd-archive
