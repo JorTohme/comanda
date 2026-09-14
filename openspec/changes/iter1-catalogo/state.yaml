@@ -18,12 +18,37 @@ phases:
     apply_progress:
       - pr: iter1-catalogo-01-test-prisma-bootstrap
         phases_done: [1, 2]
+        pr_url: https://github.com/JorTohme/comanda/pull/2
+        tracker_pr_url: https://github.com/JorTohme/comanda/pull/1
         note: >
           Jest runner (phase 1) and Prisma+@nestjs/config bootstrap (phase 2)
           complete and committed on branch iter1-catalogo-01-test-prisma-bootstrap
           off tracker branch iter1-catalogo. pnpm --filter api test green.
           Migration 20260914143433_init_catalogo applied against local Postgres 16.
+          Lint+build verified green on this branch before opening the PR.
+          Opened as PR #2 (base: tracker branch iter1-catalogo, PR #1 draft/no-merge).
           Phases 3-8 remain pending for later chained PRs.
+      - pr: iter1-catalogo-02-categorias-platos-crud
+        phases_done: [3, 4, 5]
+        pr_url: pending
+        base_branch: iter1-catalogo-01-test-prisma-bootstrap
+        note: >
+          Categorias CRUD (phase 3) and Platos CRUD (phase 4) implemented test-first
+          (CategoriasService/PlatosService unit tests with PrismaService mocked,
+          RED confirmed before GREEN implementation), controllers+modules mirroring
+          health/'s shape, both modules wired into app.module.ts. Global
+          ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+          wired in main.ts (phase 5). PlatosService.create/update validate categoriaId
+          existence via Prisma and throw BadRequestException (400) when missing;
+          update/remove map Prisma P2025 to NotFoundException (404) for both
+          Categorias and Platos. pnpm --filter api test green (16/16, 3 suites).
+          pnpm --filter api lint and build both green. Branch
+          iter1-catalogo-02-categorias-platos-crud created off
+          iter1-catalogo-01-test-prisma-bootstrap (not off tracker/main), committed
+          locally, not pushed/PR-opened — orchestrator to push and open PR #3
+          (base: iter1-catalogo-01-test-prisma-bootstrap). Phase 6 (packages/shared
+          contracts) and phase 7 (apps/web catalogo UI) intentionally untouched
+          for the next chained PR; phase 8 manual e2e verification also pending.
   verify:
     status: pending
   archive:
