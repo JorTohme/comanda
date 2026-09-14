@@ -1,0 +1,41 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Tech stack: pnpm 9.1.2 + Turborepo monorepo. apps/api (NestJS 10, TS strict),
+  apps/web (Next.js 14 App Router), apps/operativa (Vite 5 + React 18 PWA),
+  packages/shared (plain TS contracts, no runtime deps). Postgres 16 + Redis 7
+  via docker-compose (not yet wired into apps/api).
+  Architecture: Screaming/domain-oriented monorepo, currently scaffold-only
+  (trivial health checks per app, no DB/ORM wiring yet).
+  Testing: no test runner configured anywhere yet (no Jest/Vitest, no test
+  script/task). Strict TDD Mode is declared enabled in CLAUDE.md but fails
+  closed until a runner is wired (see apply.tdd below).
+  Style: Spanish domain language (Pedido, Mesa, Plato...) with English infra
+  code; Conventional Commits; colocated *.spec.ts tests once a runner exists;
+  TypeScript strict everywhere.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    guidelines:
+      - Follow existing code patterns (Spanish domain terms, English infra code)
+      - Keep TypeScript strict mode passing
+    tdd: true
+    test_command: "pnpm --filter api test"
+  verify:
+    test_command: "pnpm --filter api test"
+    build_command: "pnpm build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

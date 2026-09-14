@@ -1,0 +1,40 @@
+change: iter1-catalogo
+schema: spec-driven
+phases:
+  explore:
+    status: done
+  research:
+    status: skipped
+  proposal:
+    status: done
+  specs:
+    status: done
+  design:
+    status: done
+  tasks:
+    status: done
+  apply:
+    status: in_progress
+    apply_progress:
+      - pr: iter1-catalogo-01-test-prisma-bootstrap
+        phases_done: [1, 2]
+        note: >
+          Jest runner (phase 1) and Prisma+@nestjs/config bootstrap (phase 2)
+          complete and committed on branch iter1-catalogo-01-test-prisma-bootstrap
+          off tracker branch iter1-catalogo. pnpm --filter api test green.
+          Migration 20260914143433_init_catalogo applied against local Postgres 16.
+          Phases 3-8 remain pending for later chained PRs.
+  verify:
+    status: pending
+  archive:
+    status: pending
+open_decisions:
+  - id: tenancy-columns
+    question: "¿org_id/sucursal_id nullable-y-sin-forzar en Categoria/Plato desde ya, o se agregan recién en la iteración de tenancy/auth?"
+    status: confirmed
+    answer: "Nullable sin forzar: columnas listas en el schema desde el día uno, sin poblarlas de verdad hasta que exista auth/tenancy."
+  - id: research
+    question: "¿Corremos sdd-research antes de la propuesta?"
+    status: confirmed
+    answer: "Saltear — decisiones internas, sin necesidad de evidencia externa nueva."
+next_recommended: sdd-apply
