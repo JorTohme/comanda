@@ -1,10 +1,20 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreatePlatoDto } from "./dto/create-plato.dto";
 import { UpdatePlatoDto } from "./dto/update-plato.dto";
 
 function isNotFoundError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2025";
+}
+
+function isForeignKeyViolationError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2003";
 }
 
 @Injectable()
@@ -55,6 +65,9 @@ export class PlatosService {
     } catch (error) {
       if (isNotFoundError(error)) {
         throw new NotFoundException(`Plato ${id} not found`);
+      }
+      if (isForeignKeyViolationError(error)) {
+        throw new ConflictException(`Plato ${id} is referenced by an existing Pedido`);
       }
       throw error;
     }

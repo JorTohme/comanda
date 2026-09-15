@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { PlatosService } from "./platos.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -118,5 +118,11 @@ describe("PlatosService", () => {
     prisma.plato.delete.mockRejectedValue({ code: "P2025" });
 
     await expect(service.remove("missing-id")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("throws ConflictException when deleting a plato referenced by an existing ItemPedido", async () => {
+    prisma.plato.delete.mockRejectedValue({ code: "P2003" });
+
+    await expect(service.remove("plato-1")).rejects.toBeInstanceOf(ConflictException);
   });
 });

@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { MesasService } from "./mesas.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -9,6 +9,7 @@ describe("MesasService", () => {
     mesa: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -95,5 +96,38 @@ describe("MesasService", () => {
     prisma.mesa.delete.mockRejectedValue({ code: "P2025" });
 
     await expect(service.remove("missing-id")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("throws ConflictException when deleting a mesa referenced by an existing Pedido", async () => {
+    prisma.mesa.delete.mockRejectedValue({ code: "P2003" });
+
+    await expect(service.remove("mesa-1")).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("assertMesaExists resolves silently when the mesa exists", async () => {
+    prisma.mesa.findUnique.mockResolvedValue({ id: "mesa-1" });
+
+    await expect(service.assertMesaExists("mesa-1")).resolves.toBeUndefined();
+    expect(prisma.mesa.findUnique).toHaveBeenCalledWith({ where: { id: "mesa-1" } });
+  });
+
+  it("assertMesaExists throws BadRequestException when no mesa matches", async () => {
+    prisma.mesa.findUnique.mockResolvedValue(null);
+
+    await expect(service.assertMesaExists("missing-mesa")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it("marcarEstado updates the mesa estado against the passed transaction client", async () => {
+    const tx = { mesa: { update: jest.fn().mockResolvedValue({ id: "mesa-1", estado: "libre" }) } };
+
+    await service.marcarEstado(tx as never, "mesa-1", "libre");
+
+    expect(tx.mesa.update).toHaveBeenCalledWith({
+      where: { id: "mesa-1" },
+      data: { estado: "libre" },
+    });
+    expect(prisma.mesa.update).not.toHaveBeenCalled();
   });
 });
