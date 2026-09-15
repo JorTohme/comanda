@@ -1,0 +1,43 @@
+change: iter3-pedidos
+schema: spec-driven
+phases:
+  explore:
+    status: done
+  research:
+    status: skipped
+  proposal:
+    status: done
+  specs:
+    status: done
+  design:
+    status: done
+  tasks:
+    status: done
+  apply:
+    status: pending
+  verify:
+    status: pending
+  archive:
+    status: pending
+open_decisions:
+  - id: research
+    question: "¿Corremos sdd-research antes de la propuesta?"
+    status: confirmed
+    answer: "Saltear — decisiones internas de modelado, sin necesidad de evidencia externa."
+  - id: ui-pedidos
+    question: "¿Qué interfaz construimos para \"carga desde mozo\" esta iteración?"
+    status: confirmed
+    answer: "Admin screen en apps/web (/pedidos), mismo patrón que /catalogo y /salon. apps/operativa queda sin tocar hasta Iter 5 (offline-first)."
+  - id: acople-mesa
+    question: "¿Abrir/cerrar un Pedido mueve el estado de la Mesa automáticamente?"
+    status: confirmed
+    answer: "Sí, acoplar ahora: PedidosService llama a MesasService — abrir un pedido tipo_servicio=mesa pasa Mesa.estado a pedido_en_curso, un estado terminal (cerrado) la vuelve a libre. Primer acople cross-módulo del repo; documentar explícitamente en design.md."
+  - id: precio-item
+    question: "¿ItemPedido snapshotea el precio o lee Plato.precio en vivo?"
+    status: confirmed
+    answer: "Snapshot: precioUnitario (y nombre) se copian a ItemPedido al crear el pedido, mismo manejo de centavos que Plato.precio."
+  - id: tipo-servicio-enum
+    question: "¿El enum tipo_servicio incluye takeaway/delivery ya, o solo mesa/barra?"
+    status: confirmed
+    answer: "Solo mesa/barra por ahora (YAGNI) — a diferencia de Mesa.pedido_en_curso, no hay ninguna función que necesite construir takeaway/delivery esta iteración; se agregan cuando Fase 2 los implemente."
+next_recommended: sdd-apply
