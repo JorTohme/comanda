@@ -1,0 +1,143 @@
+change: iter2-salon
+schema: spec-driven
+phases:
+  explore:
+    status: done
+  research:
+    status: skipped
+  proposal:
+    status: done
+  specs:
+    status: done
+  design:
+    status: done
+  tasks:
+    status: done
+  apply:
+    status: done
+    apply_progress:
+      - pr: iter2-salon-01-backend-mesas
+        phases_done: [1, 2, 3]
+        pr_url: https://github.com/JorTohme/comanda/pull/6
+        tracker_pr_url: https://github.com/JorTohme/comanda/pull/5
+        base_branch: iter2-salon
+        note: >
+          Prisma schema/migration (phase 1: enum EstadoMesa + model Mesa,
+          additive migration 20260915014337_add_mesa, Categoria/Plato
+          untouched), MesasService (phase 2, RED-first: mesas.service.spec.ts
+          written and confirmed failing on missing module before
+          mesas.service.ts existed, then GREEN — create defaults estado to
+          libre, honors explicit estado, findAll -> findMany({}), update
+          persists each of the three estado values via the same PATCH
+          endpoint, update/remove map Prisma P2025 to NotFoundException,
+          remove returns the deleted row; no FK pre-check since Mesa
+          references nothing), and the HTTP layer (phase 3: CreateMesaDto/
+          UpdateMesaDto class-validator DTOs, MesasController mirroring
+          PlatosController's shape, MesasModule, wired into app.module.ts)
+          all complete and committed on branch
+          iter2-salon-01-backend-mesas off tracker branch iter2-salon.
+          pnpm --filter api test 25/25 green, pnpm --filter api lint green,
+          pnpm --filter api build green. Manual smoke test run against local
+          Postgres 16 (docker compose, already running): POST /mesas valid
+          -> 201 estado=libre; POST capacidad:0 -> 400; POST invalid estado
+          "reservada" -> 400; POST unknown field -> 400; GET /mesas -> 200
+          array; PATCH through all three estado values (libre/ocupada/
+          pedido_en_curso) -> 200 each; PATCH nonexistent id -> 404; PATCH
+          invalid capacidad -> 400; DELETE existing -> 200; DELETE
+          nonexistent -> 404. Test rows cleaned up after verification.
+          packages/shared, apps/web/app/salon, and the openspec/config.yaml
+          context refresh (phases 4-6) intentionally untouched for PR 2 off
+          this branch. Opened as PR #6 (base: tracker branch iter2-salon,
+          PR #5 draft/no-merge).
+      - pr: iter2-salon-02-shared-admin-ui
+        phases_done: [4, 5, 6]
+        pr_url: https://github.com/JorTohme/comanda/pull/7
+        tracker_pr_url: https://github.com/JorTohme/comanda/pull/5
+        base_branch: iter2-salon-01-backend-mesas
+        note: >
+          packages/shared (phase 4): EstadoMesa type, Mesa interface,
+          CreateMesaInput/UpdateMesaInput, and the 4 fetch wrappers
+          (listMesas/createMesa/updateMesa/deleteMesa) added to
+          packages/shared/src/index.ts, byte-identical style to the Plato
+          wrappers (same parseJsonOrThrow/throwIfNotOk helpers). No dedicated
+          test written — Mesa has no conversion/branching logic analogous to
+          centavosToPesos, matching Iter 1's precedent of leaving Categoria's
+          plain interface + wrappers untested; pnpm --filter shared test
+          stayed green at 8/8 (unchanged, confirms no regression). Admin UI
+          (phase 5): apps/web/app/salon/page.tsx created, "use client",
+          mirroring apps/web/app/catalogo/page.tsx's conventions (mount-time
+          fetch, local-array state updates from resolved responses only, no
+          UI library). Grid is a <ul> CSS-grid of <li> holding a native
+          <button> card (nombre, capacidad, estado label + COLOR_ESTADO
+          background) with Editar/Eliminar as sibling buttons, never nested,
+          per design.md's final click-to-cycle interaction. handleCiclarEstado
+          uses the fixed SIGUIENTE_ESTADO map (libre -> ocupada ->
+          pedido_en_curso -> libre) and calls updateMesa, applying the new
+          state only from the resolved API response (no optimistic apply);
+          every create/update/delete/cycle failure path sets `error` and
+          leaves the grid unchanged. CRUD form (nombre + capacidad,
+          type="number" min={1}) supports create/edit/cancel/delete. Config
+          refresh (phase 6): openspec/config.yaml's stale `context:` block
+          (predated Iter 1) rewritten to reflect Prisma/Postgres wiring, the
+          catalogo and salon domain modules, and the two Jest runners
+          (apps/api, packages/shared) with their actual test scope.
+          All on branch iter2-salon-02-shared-admin-ui off
+          iter2-salon-01-backend-mesas. Verification: pnpm --filter shared
+          test 8/8 green; pnpm --filter api test 25/25 green (regression);
+          pnpm build 4/4 packages green (web's /salon route compiled
+          statically); pnpm lint 5/5 green. Manual e2e: docker compose
+          Postgres/Redis already running; started `pnpm --filter api dev`
+          and `pnpm --filter web dev` locally, curl GET http://localhost:3000/salon
+          -> 200 with "Salón" heading rendered (browser unavailable in this
+          environment, curl-based simulation used per task instructions);
+          full CRUD + 3-state cycle simulated via curl directly against
+          the running api with the exact request shapes the page's shared
+          fetch wrappers issue: POST /mesas (create) -> 201 estado=libre;
+          GET /mesas -> 200 array containing it; PATCH estado=ocupada -> 200;
+          PATCH estado=pedido_en_curso -> 200; PATCH estado=libre -> 200
+          (full cycle back to start); PATCH nombre/capacidad (edit) -> 200;
+          DELETE -> 200; PATCH after delete -> 404 (confirms removal). Both
+          dev servers stopped after verification.
+  verify:
+    status: done
+    verdict: pass_with_warnings
+    verify_report_path: openspec/changes/iter2-salon/verify-report.md
+    summary: >
+      12/12 requirements and 19/19 scenarios compliant. Fresh independent
+      re-run of pnpm --filter api test (25/25), pnpm --filter shared test
+      (8/8), pnpm build --force (4/4 packages, /salon compiled
+      statically), and pnpm lint --force (5/5) all green. Independent
+      manual smoke test against a locally running pnpm --filter api dev
+      plus docker-compose Postgres covered every backend spec scenario,
+      including edge cases the apply phase did not explicitly enumerate
+      (missing nombre, empty nombre on update, isolated nombre/capacidad
+      field updates). Zero CRITICAL findings. Three WARNINGs carried:
+      WARNING-1 backend validation-rejection scenarios have no automated
+      integration test (design.md specified one, tasks.md downgraded it
+      to curl-or-supertest, apply used curl only); WARNING-2
+      mesas.service.spec.ts update triangulation covers only the estado
+      field, not nombre/capacidad; WARNING-3 all 8 salon-admin scenarios
+      have zero automated UI test coverage (documented precedent from
+      Iter 1 WARNING-1, no RTL/Playwright in the repo). No scope creep
+      found (no pos_x/pos_y, no Pedido FK, no Redis usage, no
+      auth/tenancy enforcement).
+  archive:
+    status: pending
+open_decisions:
+  - id: research
+    question: "¿Corremos sdd-research antes de la propuesta?"
+    status: confirmed
+    answer: "Saltear — decisiones internas de modelado, sin necesidad de evidencia externa."
+  - id: occupancy-states
+    question: "¿Cuántos estados de ocupación tiene Mesa en esta iteración?"
+    status: confirmed
+    answer: "Tres estados desde ya: libre/ocupada/pedido_en_curso, coincidiendo con sistema-gestion-gastronomico.md §7.8. pedido_en_curso queda sin disparador automático real hasta que exista Pedido (Iter 3); sdd-propose debe documentar esto explícitamente."
+  - id: mesa-capacidad
+    question: "¿Mesa necesita un campo `capacidad` en esta iteración?"
+    status: confirmed
+    answer: "Sí, agregar `capacidad: Int` desde ya, anticipando que Iter 3 (Pedidos) lo va a necesitar para asignar mesas por tamaño de grupo."
+  - id: mesa-identidad
+    question: "¿Cómo identificamos cada Mesa?"
+    status: confirmed
+    answer: "nombre: String — cubre mesas y posiciones de barra bajo el mismo campo, sin discriminante de tipo."
+next_recommended: sdd-archive
