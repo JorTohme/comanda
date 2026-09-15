@@ -56,6 +56,55 @@ export interface Mesa {
 export type CreateMesaInput = { nombre: string; capacidad: number; estado?: EstadoMesa };
 export type UpdateMesaInput = Partial<CreateMesaInput>;
 
+export type TipoServicio = "mesa" | "barra";
+export type EstadoPedido =
+  | "abierto"
+  | "enviado_a_cocina"
+  | "en_preparacion"
+  | "listo"
+  | "entregado"
+  | "cobrado"
+  | "cerrado";
+
+export interface ItemPedido {
+  id: string;
+  pedidoId: string;
+  platoId: string;
+  nombre: string;
+  precioUnitario: number;
+  cantidad: number;
+}
+
+export interface Pedido {
+  id: string;
+  tipoServicio: TipoServicio;
+  mesaId: string | null;
+  estado: EstadoPedido;
+  items: ItemPedido[];
+  orgId: string | null;
+  sucursalId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreatePedidoInput = {
+  tipoServicio: TipoServicio;
+  mesaId?: string;
+  items: { platoId: string; cantidad: number }[];
+};
+
+// Mirrors apps/api/src/pedidos/estado-pedido.ts SIGUIENTE — accepted duplication,
+// same pattern as EstadoMesa (apps/api does not depend on @comanda/shared).
+export const SIGUIENTE_ESTADO_PEDIDO: Record<EstadoPedido, EstadoPedido | null> = {
+  abierto: "enviado_a_cocina",
+  enviado_a_cocina: "en_preparacion",
+  en_preparacion: "listo",
+  listo: "entregado",
+  entregado: "cobrado",
+  cobrado: "cerrado",
+  cerrado: null,
+};
+
 /**
  * Formats an integer number of centavos as a two-decimal peso string.
  * Pure integer arithmetic — never routes through float multiplication/division,
@@ -199,4 +248,34 @@ export async function deleteMesa(baseUrl: string, id: string): Promise<void> {
   const url = `${baseUrl}/mesas/${id}`;
   const res = await fetch(url, { method: "DELETE" });
   return throwIfNotOk(res, "DELETE", url);
+}
+
+export async function listPedidos(baseUrl: string): Promise<Pedido[]> {
+  const url = `${baseUrl}/pedidos`;
+  const res = await fetch(url);
+  return parseJsonOrThrow<Pedido[]>(res, "GET", url);
+}
+
+export async function createPedido(baseUrl: string, input: CreatePedidoInput): Promise<Pedido> {
+  const url = `${baseUrl}/pedidos`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJsonOrThrow<Pedido>(res, "POST", url);
+}
+
+export async function avanzarEstadoPedido(
+  baseUrl: string,
+  id: string,
+  estado: EstadoPedido,
+): Promise<Pedido> {
+  const url = `${baseUrl}/pedidos/${id}/estado`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ estado }),
+  });
+  return parseJsonOrThrow<Pedido>(res, "PATCH", url);
 }

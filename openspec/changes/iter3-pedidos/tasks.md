@@ -97,44 +97,44 @@ _Satisfies: pedidos spec "Create Pedido with items", "tipoServicio determines me
 
 ## 4. Pedidos HTTP Layer & Cross-Module Wiring
 
-- [ ] 4.1 Create `apps/api/src/pedidos/dto/create-item-pedido.dto.ts` (`platoId: @IsUUID`, `cantidad: @IsInt @Min(1)`)
-- [ ] 4.2 Create `apps/api/src/pedidos/dto/create-pedido.dto.ts` (`tipoServicio: @IsEnum(TipoServicio)`, `mesaId?: @IsOptional @IsUUID`, `items: @IsArray @ArrayNotEmpty @ValidateNested({each:true}) @Type(() => CreateItemPedidoDto)`)
-- [ ] 4.3 Create `apps/api/src/pedidos/dto/update-estado-pedido.dto.ts` (`estado: @IsEnum(EstadoPedido)`), hand-written, no `@nestjs/mapped-types`
-- [ ] 4.4 Create `apps/api/src/pedidos/pedidos.controller.ts` — `POST /pedidos`, `GET /pedidos`, `GET /pedidos/:id`, `PATCH /pedidos/:id/estado`, mirroring `mesas.controller.ts`'s shape
-- [ ] 4.5 Create `apps/api/src/pedidos/pedidos.module.ts` — imports `MesasModule` (for `MesasService` injection per §2), registers `PedidosController`/`PedidosService`
-- [ ] 4.6 Wire `PedidosModule` into `apps/api/src/app.module.ts` imports
-- [ ] 4.7 Verify the existing global `ValidationPipe` rejects `items: []`, `cantidad: 0`, an unknown `tipoServicio`/`estado` enum value, and unknown fields on `/pedidos` with 400 (curl or a supertest case)
-- [ ] 4.8 Run `pnpm --filter api test` — confirm still green
+- [x] 4.1 Create `apps/api/src/pedidos/dto/create-item-pedido.dto.ts` (`platoId: @IsUUID`, `cantidad: @IsInt @Min(1)`)
+- [x] 4.2 Create `apps/api/src/pedidos/dto/create-pedido.dto.ts` (`tipoServicio: @IsEnum(TipoServicio)`, `mesaId?: @IsOptional @IsUUID`, `items: @IsArray @ArrayNotEmpty @ValidateNested({each:true}) @Type(() => CreateItemPedidoDto)`)
+- [x] 4.3 Create `apps/api/src/pedidos/dto/update-estado-pedido.dto.ts` (`estado: @IsEnum(EstadoPedido)`), hand-written, no `@nestjs/mapped-types`
+- [x] 4.4 Create `apps/api/src/pedidos/pedidos.controller.ts` — `POST /pedidos`, `GET /pedidos`, `GET /pedidos/:id`, `PATCH /pedidos/:id/estado`, mirroring `mesas.controller.ts`'s shape
+- [x] 4.5 Create `apps/api/src/pedidos/pedidos.module.ts` — imports `MesasModule` (for `MesasService` injection per §2), registers `PedidosController`/`PedidosService`
+- [x] 4.6 Wire `PedidosModule` into `apps/api/src/app.module.ts` imports
+- [x] 4.7 Verify the existing global `ValidationPipe` rejects `items: []`, `cantidad: 0`, an unknown `tipoServicio`/`estado` enum value, and unknown fields on `/pedidos` with 400 (curl or a supertest case)
+- [x] 4.8 Run `pnpm --filter api test` — confirm still green
 
 _Satisfies: pedidos spec "Invalid payload rejected" (via Create Pedido scenario), "List and get Pedido"; design.md Interfaces/Contracts (HTTP method table); design.md Threat Matrix (HTTP body trust boundary via the existing global `ValidationPipe`)._
 
 ## 5. `packages/shared` Contracts
 
-- [ ] 5.1 Add `TipoServicio`, `EstadoPedido` types and `ItemPedido`, `Pedido` interfaces to `packages/shared/src/index.ts` exactly per design.md (including nullable `orgId`/`sucursalId` on `Pedido`)
-- [ ] 5.2 Add `CreatePedidoInput` type and `SIGUIENTE_ESTADO_PEDIDO: Record<EstadoPedido, EstadoPedido | null>` mirroring `apps/api/src/pedidos/estado-pedido.ts` (accepted duplication, same pattern as `EstadoMesa` in Iter 2 — `apps/api` does not depend on `@comanda/shared`)
-- [ ] 5.3 Add the 3 fetch wrappers (`listPedidos`, `createPedido`, `avanzarEstadoPedido`) — `baseUrl` first param, reusing `parseJsonOrThrow`/`throwIfNotOk`, same style as the `Mesa`/`Plato` wrappers. No `deletePedido` wrapper — there is no `DELETE /pedidos/:id` this iteration
-- [ ] 5.4 Run `pnpm --filter shared test` (or `pnpm --filter api test` if shared has no own script) — confirm green
+- [x] 5.1 Add `TipoServicio`, `EstadoPedido` types and `ItemPedido`, `Pedido` interfaces to `packages/shared/src/index.ts` exactly per design.md (including nullable `orgId`/`sucursalId` on `Pedido`)
+- [x] 5.2 Add `CreatePedidoInput` type and `SIGUIENTE_ESTADO_PEDIDO: Record<EstadoPedido, EstadoPedido | null>` mirroring `apps/api/src/pedidos/estado-pedido.ts` (accepted duplication, same pattern as `EstadoMesa` in Iter 2 — `apps/api` does not depend on `@comanda/shared`)
+- [x] 5.3 Add the 3 fetch wrappers (`listPedidos`, `createPedido`, `avanzarEstadoPedido`) — `baseUrl` first param, reusing `parseJsonOrThrow`/`throwIfNotOk`, same style as the `Mesa`/`Plato` wrappers. No `deletePedido` wrapper — there is no `DELETE /pedidos/:id` this iteration
+- [x] 5.4 Run `pnpm --filter shared test` (or `pnpm --filter api test` if shared has no own script) — confirm green
 
 _Satisfies: pedidos-admin spec's dependency on shared contracts; design.md Interfaces/Contracts._
 
 ## 6. Admin UI (`apps/web/app/pedidos/page.tsx`)
 
-- [ ] 6.1 Create `apps/web/app/pedidos/page.tsx` — `"use client"`, state shape per design.md (`pedidos`, `mesas`, `platos`, `form: { tipoServicio, mesaId, items }`, `error`, `cargando`)
-- [ ] 6.2 Implement mount-time `useEffect` firing `listPedidos`, `listMesas`, `listPlatos` together, with error surfacing
-- [ ] 6.3 Implement the alta form: `tipoServicio` `<select>`; the `mesaId` `<select>` renders **only** when `tipoServicio === "mesa"`, listing `estado === "libre"` mesas; a repeatable row adds `platoId` + `cantidad` lines from the `Plato` list; running total via `centavosToPesos`, display-only
-- [ ] 6.4 Implement the pedido list: one card per pedido showing `estado`, `tipoServicio`, its items (`nombre` × `cantidad` at `centavosToPesos(precioUnitario)` — the snapshot, never a live `Plato` lookup) and the line total
-- [ ] 6.5 Implement the single `Avanzar a {SIGUIENTE_ESTADO_PEDIDO[estado]}` button per card; when the value is `null` (`cerrado`) the button is **not rendered** — forward-only, no jumps, no wrap-around
-- [ ] 6.6 On advance success, `setPedidos` from the resolved response only (no optimistic apply); on failure set `error` and leave the card's estado unchanged
-- [ ] 6.7 Ensure every create/advance failure path sets `error` and leaves the list unchanged
+- [x] 6.1 Create `apps/web/app/pedidos/page.tsx` — `"use client"`, state shape per design.md (`pedidos`, `mesas`, `platos`, `form: { tipoServicio, mesaId, items }`, `error`, `cargando`)
+- [x] 6.2 Implement mount-time `useEffect` firing `listPedidos`, `listMesas`, `listPlatos` together, with error surfacing
+- [x] 6.3 Implement the alta form: `tipoServicio` `<select>`; the `mesaId` `<select>` renders **only** when `tipoServicio === "mesa"`, listing `estado === "libre"` mesas; a repeatable row adds `platoId` + `cantidad` lines from the `Plato` list; running total via `centavosToPesos`, display-only
+- [x] 6.4 Implement the pedido list: one card per pedido showing `estado`, `tipoServicio`, its items (`nombre` × `cantidad` at `centavosToPesos(precioUnitario)` — the snapshot, never a live `Plato` lookup) and the line total
+- [x] 6.5 Implement the single `Avanzar a {SIGUIENTE_ESTADO_PEDIDO[estado]}` button per card; when the value is `null` (`cerrado`) the button is **not rendered** — forward-only, no jumps, no wrap-around
+- [x] 6.6 On advance success, `setPedidos` from the resolved response only (no optimistic apply); on failure set `error` and leave the card's estado unchanged
+- [x] 6.7 Ensure every create/advance failure path sets `error` and leaves the list unchanged
 
 _Satisfies: pedidos-admin spec — all 4 requirements (Create Pedido with items, List Pedidos, Advance Pedido state respecting linear order, Surface API errors)._
 
 ## 7. Config Refresh & Manual Verification
 
-- [ ] 7.1 Refresh the `context:` block in `openspec/config.yaml` to include the `pedidos` module
-- [ ] 7.2 `prisma migrate dev` — confirm `Pedido`/`ItemPedido` + both enums exist with nullable `org_id`/`sucursal_id` columns, `Categoria`/`Plato`/`Mesa` untouched
-- [ ] 7.3 `pnpm --filter api test` — full suite green, regression check across `catalogo`, `salon`, `pedidos`
-- [ ] 7.4 `pnpm --filter api dev` + curl smoke tests: `POST /pedidos` (mesa + barra, valid + invalid → 400), `GET /pedidos`, `PATCH /pedidos/:id/estado` (legal transitions through to `cerrado`, illegal skip/reverse → 400, nonexistent id → 404); confirm `DELETE /platos/:id` and `DELETE /mesas/:id` on a referenced row now return 409 instead of 500
+- [x] 7.1 Refresh the `context:` block in `openspec/config.yaml` to include the `pedidos` module
+- [x] 7.2 `prisma migrate dev` — confirm `Pedido`/`ItemPedido` + both enums exist with nullable `org_id`/`sucursal_id` columns, `Categoria`/`Plato`/`Mesa` untouched
+- [x] 7.3 `pnpm --filter api test` — full suite green, regression check across `catalogo`, `salon`, `pedidos`
+- [x] 7.4 `pnpm --filter api dev` + curl smoke tests: `POST /pedidos` (mesa + barra, valid + invalid → 400), `GET /pedidos`, `PATCH /pedidos/:id/estado` (legal transitions through to `cerrado`, illegal skip/reverse → 400, nonexistent id → 404); confirm `DELETE /platos/:id` and `DELETE /mesas/:id` on a referenced row now return 409 instead of 500
 - [ ] 7.5 `pnpm dev` (web) — load `/pedidos`: create a mesa pedido, confirm `/salon` shows that Mesa amber (`pedido_en_curso`) without a direct `PATCH /mesas/:id` call; advance the pedido through every state to `cerrado`, confirm the Mesa returns to `libre`; confirm the manual `PATCH /mesas/:id` card-click cycle from Iter 2 still works
 - [ ] 7.6 `pnpm build` — confirm strict mode passes across the monorepo, `/pedidos` route compiles
 
