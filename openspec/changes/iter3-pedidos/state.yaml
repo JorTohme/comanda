@@ -14,7 +14,60 @@ phases:
   tasks:
     status: done
   apply:
-    status: pending
+    status: in_progress
+    apply_progress:
+      - pr: iter3-pedidos-01-backend
+        phases_done: [1, 2, 3]
+        pr_url: https://github.com/JorTohme/comanda/pull/8
+        tracker_pr_url: null
+        base_branch: iter3-pedidos
+        note: >
+          Prisma schema/migration (section 1: enum TipoServicio, enum
+          EstadoPedido, model Pedido, model ItemPedido, Restrict FKs on
+          Pedido.mesaId and ItemPedido.platoId, back-relation fields on
+          Mesa/Plato; additive migration 20260915032236_add_pedidos,
+          Categoria/Plato/Mesa columns untouched); the mandatory P2003 fix
+          on existing Iter 1/2 files (section 2, RED-first: added failing
+          P2003 tests to platos.service.spec.ts and mesas.service.spec.ts
+          confirmed failing before the fix, then GREEN — PlatosService.remove
+          and MesasService.remove now map Prisma P2003 to ConflictException
+          409; also added MesasService.assertMesaExists and
+          MesasService.marcarEstado(tx, mesaId, estado) RED-first, and
+          exports: [MesasService] on MesasModule); and PedidosService
+          (section 3, RED-first: estado-pedido.ts's SIGUIENTE map +
+          assertTransicionValida written test-first via a dedicated
+          estado-pedido.spec.ts covering all 6 legal transitions + the
+          terminal cerrado state; pedidos.service.spec.ts written and
+          confirmed failing (module missing) before pedidos.service.ts
+          existed, covering price/name snapshot from Plato, tipoServicio/
+          mesaId validation in both directions, unknown platoId and unknown
+          mesaId rejection, marcarEstado called inside the $transaction
+          callback only for tipoServicio=mesa, a full 7x7 table-driven sweep
+          of every (actual, destino) EstadoPedido pair for updateEstado (6
+          legal, 43 illegal including terminal cerrado and no-ops), the
+          Mesa->libre coupling on reaching cerrado, and P2025 -> 404 mapping
+          on updateEstado/findOne) all complete and committed on branch
+          iter3-pedidos-01-backend off tracker branch iter3-pedidos.
+          pnpm --filter api test 104/104 green, pnpm --filter api lint green,
+          pnpm --filter api build green. Migration applied against local
+          docker-compose Postgres 16. Manual runtime verification (real
+          Prisma client against Postgres, not mocks): created a Categoria +
+          Plato + Mesa, created a mesa Pedido referencing both via
+          PedidosService.create -> confirmed Mesa.estado flipped to
+          pedido_en_curso inside the same transaction; then confirmed
+          PlatosService.remove(plato.id) and MesasService.remove(mesa.id)
+          both throw ConflictException (status 409), not an unhandled 500;
+          test rows cleaned up after verification. HTTP controller, DTOs,
+          PedidosModule, app.module.ts wiring, packages/shared contracts,
+          and the admin UI (sections 4-7) intentionally untouched for PR 2/3
+          off this branch, per the review workload forecast's 3-way
+          feature-branch-chain split. Deviation: the tracker branch
+          iter3-pedidos could not get a draft PR opened yet — its SDD docs
+          commit already landed directly on main (unlike Iter 1/2, where
+          that commit lived on the tracker branch first), so iter3-pedidos
+          is currently byte-identical to main and GitHub rejects an
+          empty-diff PR. The tracker PR must be opened once this PR (#8)
+          merges into iter3-pedidos and gives it a diff vs main.
   verify:
     status: pending
   archive:
