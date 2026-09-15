@@ -1,0 +1,39 @@
+change: iter2-salon
+schema: spec-driven
+phases:
+  explore:
+    status: done
+  research:
+    status: skipped
+  proposal:
+    status: done
+  specs:
+    status: done
+  design:
+    status: done
+  tasks:
+    status: done
+  apply:
+    status: pending
+  verify:
+    status: pending
+  archive:
+    status: pending
+open_decisions:
+  - id: research
+    question: "¿Corremos sdd-research antes de la propuesta?"
+    status: confirmed
+    answer: "Saltear — decisiones internas de modelado, sin necesidad de evidencia externa."
+  - id: occupancy-states
+    question: "¿Cuántos estados de ocupación tiene Mesa en esta iteración?"
+    status: confirmed
+    answer: "Tres estados desde ya: libre/ocupada/pedido_en_curso, coincidiendo con sistema-gestion-gastronomico.md §7.8. pedido_en_curso queda sin disparador automático real hasta que exista Pedido (Iter 3); sdd-propose debe documentar esto explícitamente."
+  - id: mesa-capacidad
+    question: "¿Mesa necesita un campo `capacidad` en esta iteración?"
+    status: confirmed
+    answer: "Sí, agregar `capacidad: Int` desde ya, anticipando que Iter 3 (Pedidos) lo va a necesitar para asignar mesas por tamaño de grupo."
+  - id: mesa-identidad
+    question: "¿Cómo identificamos cada Mesa?"
+    status: confirmed
+    answer: "nombre: String — cubre mesas y posiciones de barra bajo el mismo campo, sin discriminante de tipo."
+next_recommended: sdd-apply
