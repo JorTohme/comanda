@@ -51,7 +51,7 @@ phases:
           PR #5 draft/no-merge).
       - pr: iter2-salon-02-shared-admin-ui
         phases_done: [4, 5, 6]
-        pr_url: PENDING_GH_CREATE
+        pr_url: https://github.com/JorTohme/comanda/pull/7
         tracker_pr_url: https://github.com/JorTohme/comanda/pull/5
         base_branch: iter2-salon-01-backend-mesas
         note: >
