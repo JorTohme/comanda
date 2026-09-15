@@ -99,7 +99,28 @@ phases:
           DELETE -> 200; PATCH after delete -> 404 (confirms removal). Both
           dev servers stopped after verification.
   verify:
-    status: pending
+    status: done
+    verdict: pass_with_warnings
+    verify_report_path: openspec/changes/iter2-salon/verify-report.md
+    summary: >
+      12/12 requirements and 19/19 scenarios compliant. Fresh independent
+      re-run of pnpm --filter api test (25/25), pnpm --filter shared test
+      (8/8), pnpm build --force (4/4 packages, /salon compiled
+      statically), and pnpm lint --force (5/5) all green. Independent
+      manual smoke test against a locally running pnpm --filter api dev
+      plus docker-compose Postgres covered every backend spec scenario,
+      including edge cases the apply phase did not explicitly enumerate
+      (missing nombre, empty nombre on update, isolated nombre/capacidad
+      field updates). Zero CRITICAL findings. Three WARNINGs carried:
+      WARNING-1 backend validation-rejection scenarios have no automated
+      integration test (design.md specified one, tasks.md downgraded it
+      to curl-or-supertest, apply used curl only); WARNING-2
+      mesas.service.spec.ts update triangulation covers only the estado
+      field, not nombre/capacidad; WARNING-3 all 8 salon-admin scenarios
+      have zero automated UI test coverage (documented precedent from
+      Iter 1 WARNING-1, no RTL/Playwright in the repo). No scope creep
+      found (no pos_x/pos_y, no Pedido FK, no Redis usage, no
+      auth/tenancy enforcement).
   archive:
     status: pending
 open_decisions:
@@ -119,4 +140,4 @@ open_decisions:
     question: "¿Cómo identificamos cada Mesa?"
     status: confirmed
     answer: "nombre: String — cubre mesas y posiciones de barra bajo el mismo campo, sin discriminante de tipo."
-next_recommended: sdd-verify
+next_recommended: sdd-archive
