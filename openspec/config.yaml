@@ -2,18 +2,28 @@
 schema: spec-driven
 
 context: |
-  Tech stack: pnpm 9.1.2 + Turborepo monorepo. apps/api (NestJS 10, TS strict),
-  apps/web (Next.js 14 App Router), apps/operativa (Vite 5 + React 18 PWA),
-  packages/shared (plain TS contracts, no runtime deps). Postgres 16 + Redis 7
-  via docker-compose (not yet wired into apps/api).
-  Architecture: Screaming/domain-oriented monorepo, currently scaffold-only
-  (trivial health checks per app, no DB/ORM wiring yet).
-  Testing: no test runner configured anywhere yet (no Jest/Vitest, no test
-  script/task). Strict TDD Mode is declared enabled in CLAUDE.md but fails
-  closed until a runner is wired (see apply.tdd below).
+  Tech stack: pnpm 9.1.2 + Turborepo monorepo. apps/api (NestJS 10, TS strict,
+  Prisma ORM), apps/web (Next.js 14 App Router), apps/operativa (Vite 5 +
+  React 18 PWA), packages/shared (plain TS contracts + fetch wrappers, no
+  runtime deps). Postgres 16 + Redis 7 via docker-compose, wired into apps/api
+  via PrismaService (Redis still unused).
+  Architecture: Screaming/domain-oriented monorepo. apps/api/src/catalogo
+  (Categoria, Plato) and apps/api/src/salon (Mesa) are the current domain
+  modules, each a NestJS module/controller/service/DTO slice against
+  PrismaService, wired into app.module.ts. apps/web has one admin page per
+  domain (app/catalogo, app/salon) consuming packages/shared's fetch
+  wrappers; no UI library, inline styles, local-array state updates from
+  resolved API responses (no optimistic apply, no refetch-on-mutate).
+  Testing: apps/api uses Jest (`pnpm --filter api test`), colocated
+  *.service.spec.ts, RED-first against a mocked PrismaService. packages/shared
+  has its own Jest runner (`pnpm --filter shared test`) for logic-bearing
+  helpers only (e.g. centavosToPesos/pesosToCentavos); plain interface/type
+  exports and fetch wrappers with no branching logic are intentionally
+  untested, mirroring the existing Categoria/Plato wrappers. Strict TDD Mode
+  is enabled and enforced for anything with real logic.
   Style: Spanish domain language (Pedido, Mesa, Plato...) with English infra
-  code; Conventional Commits; colocated *.spec.ts tests once a runner exists;
-  TypeScript strict everywhere.
+  code; Conventional Commits; colocated *.spec.ts tests; TypeScript strict
+  everywhere.
 
 rules:
   proposal:
