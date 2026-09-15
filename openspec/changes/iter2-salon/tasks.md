@@ -31,30 +31,30 @@ Rough breakdown: schema+migration ~55, `mesas.service.spec.ts` + `mesas.service.
 
 ## 1. Prisma Schema & Migration
 
-- [ ] 1.1 Add `enum EstadoMesa { libre ocupada pedido_en_curso }` and `model Mesa` to `apps/api/prisma/schema.prisma` exactly per design.md (`nombre String`, `capacidad Int`, `estado EstadoMesa @default(libre)`, nullable `orgId`/`sucursalId`, `createdAt`/`updatedAt`)
-- [ ] 1.2 Run `docker compose up -d` then `prisma migrate dev` to generate the additive migration under `apps/api/prisma/migrations/` — confirm `Categoria`/`Plato` are untouched
-- [ ] 1.3 Run `pnpm --filter api test` — confirm still green (no domain code yet)
+- [x] 1.1 Add `enum EstadoMesa { libre ocupada pedido_en_curso }` and `model Mesa` to `apps/api/prisma/schema.prisma` exactly per design.md (`nombre String`, `capacidad Int`, `estado EstadoMesa @default(libre)`, nullable `orgId`/`sucursalId`, `createdAt`/`updatedAt`)
+- [x] 1.2 Run `docker compose up -d` then `prisma migrate dev` to generate the additive migration under `apps/api/prisma/migrations/` — confirm `Categoria`/`Plato` are untouched
+- [x] 1.3 Run `pnpm --filter api test` — confirm still green (no domain code yet)
 
 _Satisfies: salon spec "Three-state occupancy enum"; design.md Interfaces/Contracts; proposal.md Success Criteria "migrate dev creates Mesa + EstadoMesa without altering Categoria/Plato"._
 
 ## 2. Mesas Service (test-first)
 
-- [ ] 2.1 Write `apps/api/src/salon/mesas/mesas.service.spec.ts` — failing tests against a mocked `PrismaService` for: create defaults `estado=libre` when omitted, create honors an explicit `estado`, `findAll()` calls `findMany({})`, `update` persists each of the three `estado` values, `update`/`remove` map Prisma P2025 → `NotFoundException`, `remove` returns the deleted row
-- [ ] 2.2 Confirm the new spec fails for the right reason (module doesn't exist yet) — `pnpm --filter api test`
-- [ ] 2.3 Create `apps/api/src/salon/mesas/mesas.service.ts` implementing create/findAll/update/remove against `PrismaService` — no FK pre-check, `Mesa` references nothing — make 2.1 pass
-- [ ] 2.4 Run `pnpm --filter api test` — confirm all Mesa service tests pass
+- [x] 2.1 Write `apps/api/src/salon/mesas/mesas.service.spec.ts` — failing tests against a mocked `PrismaService` for: create defaults `estado=libre` when omitted, create honors an explicit `estado`, `findAll()` calls `findMany({})`, `update` persists each of the three `estado` values, `update`/`remove` map Prisma P2025 → `NotFoundException`, `remove` returns the deleted row
+- [x] 2.2 Confirm the new spec fails for the right reason (module doesn't exist yet) — `pnpm --filter api test`
+- [x] 2.3 Create `apps/api/src/salon/mesas/mesas.service.ts` implementing create/findAll/update/remove against `PrismaService` — no FK pre-check, `Mesa` references nothing — make 2.1 pass
+- [x] 2.4 Run `pnpm --filter api test` — confirm all Mesa service tests pass
 
 _Satisfies: salon spec "Create Mesa", "List Mesas", "Update Mesa", "Delete Mesa", "Three-state occupancy enum", "pedido_en_curso is operator-asserted"._
 
 ## 3. Mesas HTTP Layer
 
-- [ ] 3.1 Create `apps/api/src/salon/mesas/dto/create-mesa.dto.ts` (`nombre: @IsString @IsNotEmpty`, `capacidad: @IsInt @Min(1)`, `estado?: @IsOptional @IsEnum(EstadoMesa)`)
-- [ ] 3.2 Create `apps/api/src/salon/mesas/dto/update-mesa.dto.ts` — same fields, all `@IsOptional()`, hand-written (no `@nestjs/mapped-types`)
-- [ ] 3.3 Create `apps/api/src/salon/mesas/mesas.controller.ts` — `POST /mesas`, `GET /mesas`, `PATCH /mesas/:id`, `DELETE /mesas/:id`, mirroring `apps/api/src/catalogo/platos/platos.controller.ts`'s shape
-- [ ] 3.4 Create `apps/api/src/salon/mesas/mesas.module.ts`
-- [ ] 3.5 Wire `MesasModule` into `apps/api/src/app.module.ts` imports
-- [ ] 3.6 Verify the existing global `ValidationPipe` rejects `capacidad: 0`, a non-enum `estado`, and unknown fields on `/mesas` with 400 (curl or a supertest case)
-- [ ] 3.7 Run `pnpm --filter api test` — confirm still green
+- [x] 3.1 Create `apps/api/src/salon/mesas/dto/create-mesa.dto.ts` (`nombre: @IsString @IsNotEmpty`, `capacidad: @IsInt @Min(1)`, `estado?: @IsOptional @IsEnum(EstadoMesa)`)
+- [x] 3.2 Create `apps/api/src/salon/mesas/dto/update-mesa.dto.ts` — same fields, all `@IsOptional()`, hand-written (no `@nestjs/mapped-types`)
+- [x] 3.3 Create `apps/api/src/salon/mesas/mesas.controller.ts` — `POST /mesas`, `GET /mesas`, `PATCH /mesas/:id`, `DELETE /mesas/:id`, mirroring `apps/api/src/catalogo/platos/platos.controller.ts`'s shape
+- [x] 3.4 Create `apps/api/src/salon/mesas/mesas.module.ts`
+- [x] 3.5 Wire `MesasModule` into `apps/api/src/app.module.ts` imports
+- [x] 3.6 Verify the existing global `ValidationPipe` rejects `capacidad: 0`, a non-enum `estado`, and unknown fields on `/mesas` with 400 (curl or a supertest case)
+- [x] 3.7 Run `pnpm --filter api test` — confirm still green
 
 _Satisfies: salon spec "Invalid payload rejected", "Invalid update rejected", "Unknown estado rejected"; design.md Threat Matrix (HTTP body trust boundary, covered by the existing global ValidationPipe)._
 

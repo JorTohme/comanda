@@ -29,3 +29,20 @@ model Plato {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
+
+enum EstadoMesa {
+  libre
+  ocupada
+  pedido_en_curso
+}
+
+model Mesa {
+  id         String     @id @default(uuid())
+  nombre     String
+  capacidad  Int
+  estado     EstadoMesa @default(libre)
+  orgId      String?
+  sucursalId String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
