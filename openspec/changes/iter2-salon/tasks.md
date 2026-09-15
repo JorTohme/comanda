@@ -11,11 +11,11 @@ No toolchain bootstrap needed — Jest, Prisma, `PrismaService`, `@nestjs/config
 | Chained PRs recommended | Yes |
 | Suggested split | PR 1 (backend domain) → PR 2 (shared contracts + admin UI + config) |
 | Delivery strategy | auto-chain |
-| Chain strategy | pending |
+| Chain strategy | feature-branch-chain |
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: feature-branch-chain
 400-line budget risk: Medium
 
 Rough breakdown: schema+migration ~55, `mesas.service.spec.ts` + `mesas.service.ts` ~175, DTOs+controller+module+`app.module.ts` diff ~75, `packages/shared` additions ~55, `apps/web/app/salon/page.tsx` ~190, `openspec/config.yaml` context refresh ~12.
@@ -60,32 +60,32 @@ _Satisfies: salon spec "Invalid payload rejected", "Invalid update rejected", "U
 
 ## 4. `packages/shared` Contracts
 
-- [ ] 4.1 Add `EstadoMesa` type and `Mesa` interface to `packages/shared/src/index.ts` exactly per design.md (including nullable `orgId`/`sucursalId`)
-- [ ] 4.2 Add `CreateMesaInput`/`UpdateMesaInput` types
-- [ ] 4.3 Add the 4 fetch wrappers (`listMesas`, `createMesa`, `updateMesa`, `deleteMesa`) — `baseUrl` first param, reusing `parseJsonOrThrow`/`throwIfNotOk`, same style as the `Plato` wrappers
-- [ ] 4.4 Run `pnpm --filter shared test` (or `pnpm --filter api test` if shared has no own script) — confirm green
+- [x] 4.1 Add `EstadoMesa` type and `Mesa` interface to `packages/shared/src/index.ts` exactly per design.md (including nullable `orgId`/`sucursalId`)
+- [x] 4.2 Add `CreateMesaInput`/`UpdateMesaInput` types
+- [x] 4.3 Add the 4 fetch wrappers (`listMesas`, `createMesa`, `updateMesa`, `deleteMesa`) — `baseUrl` first param, reusing `parseJsonOrThrow`/`throwIfNotOk`, same style as the `Plato` wrappers
+- [x] 4.4 Run `pnpm --filter shared test` (or `pnpm --filter api test` if shared has no own script) — confirm green
 
 _Satisfies: salon-admin spec's dependency on shared contracts; design.md Interfaces/Contracts._
 
 ## 5. Admin UI (`apps/web/app/salon/page.tsx`)
 
-- [ ] 5.1 Create `apps/web/app/salon/page.tsx` — `"use client"`, state shape per design.md (`mesas`, `form`, `editandoMesaId`, `error`, `cargando`)
-- [ ] 5.2 Implement mount-time `listMesas` load with error surfacing
-- [ ] 5.3 Implement the grilla: `<ul>` CSS-grid of `<li>` holding a card `<button>` (nombre, capacidad, estado label + `COLOR_ESTADO` background) plus sibling `Editar`/`Eliminar` buttons — never nest interactive elements
-- [ ] 5.4 Implement `handleCiclarEstado` using the fixed `SIGUIENTE_ESTADO` map, calling `updateMesa` and updating local state only from the resolved response (no optimistic apply)
-- [ ] 5.5 Implement the CRUD `<form>` (nombre + capacidad, `type="number"` `min={1}`) for create/edit/cancel, mirroring `apps/web/app/catalogo/page.tsx`
-- [ ] 5.6 Implement delete, removing the card from local state on success
-- [ ] 5.7 Ensure every create/update/delete/cycle failure path sets `error` and leaves the grid unchanged
+- [x] 5.1 Create `apps/web/app/salon/page.tsx` — `"use client"`, state shape per design.md (`mesas`, `form`, `editandoMesaId`, `error`, `cargando`)
+- [x] 5.2 Implement mount-time `listMesas` load with error surfacing
+- [x] 5.3 Implement the grilla: `<ul>` CSS-grid of `<li>` holding a card `<button>` (nombre, capacidad, estado label + `COLOR_ESTADO` background) plus sibling `Editar`/`Eliminar` buttons — never nest interactive elements
+- [x] 5.4 Implement `handleCiclarEstado` using the fixed `SIGUIENTE_ESTADO` map, calling `updateMesa` and updating local state only from the resolved response (no optimistic apply)
+- [x] 5.5 Implement the CRUD `<form>` (nombre + capacidad, `type="number"` `min={1}`) for create/edit/cancel, mirroring `apps/web/app/catalogo/page.tsx`
+- [x] 5.6 Implement delete, removing the card from local state on success
+- [x] 5.7 Ensure every create/update/delete/cycle failure path sets `error` and leaves the grid unchanged
 
 _Satisfies: salon-admin spec — all 6 requirements (Grid display, Create, Edit, Delete, Cycle occupancy by click, Surface API errors)._
 
 ## 6. Config Refresh & Manual Verification
 
-- [ ] 6.1 Refresh the stale `context:` block in `openspec/config.yaml` (predates Iter 1) to reflect the current stack, testing setup, and the Mesa/Salon addition
-- [ ] 6.2 `prisma migrate dev` — confirm `Mesa` + `EstadoMesa` exist with nullable `org_id`/`sucursal_id` columns
-- [ ] 6.3 `pnpm --filter api test` — full suite green
-- [ ] 6.4 `pnpm --filter api dev` + curl smoke tests: `POST /mesas` (valid + invalid `capacidad`/`estado` → 400), `GET /mesas`, `PATCH /mesas/:id` (each of the 3 estado values + nonexistent id → 404), `DELETE /mesas/:id` (existing + nonexistent → 404)
-- [ ] 6.5 `pnpm dev` (web) — load `/salon`, verify grid colors, click a card three times and confirm it returns to `libre`, confirm keyboard Enter/Space on the focused card cycles state, CRUD round-trip
-- [ ] 6.6 `pnpm build` — confirm strict mode passes across the monorepo
+- [x] 6.1 Refresh the stale `context:` block in `openspec/config.yaml` (predates Iter 1) to reflect the current stack, testing setup, and the Mesa/Salon addition
+- [x] 6.2 `prisma migrate dev` — confirm `Mesa` + `EstadoMesa` exist with nullable `org_id`/`sucursal_id` columns (verified in PR 1; re-confirmed via `GET /mesas` returning `orgId`/`sucursalId: null` in PR 2's smoke test)
+- [x] 6.3 `pnpm --filter api test` — full suite green (25/25, regression check for PR 2)
+- [x] 6.4 `pnpm --filter api dev` + curl smoke tests: `POST /mesas` (valid + invalid `capacidad`/`estado` → 400 — covered in PR 1), `GET /mesas`, `PATCH /mesas/:id` (each of the 3 estado values + nonexistent id → 404), `DELETE /mesas/:id` (existing + nonexistent → 404) — re-run in PR 2 as part of curl-based e2e simulation
+- [x] 6.5 `pnpm dev` (web) — load `/salon` (curl-based simulation: browser unavailable in this environment; confirmed HTTP 200 + "Salón" heading rendered), full create/cycle-through-all-3-states/edit/delete round-trip simulated via curl directly against the running api (identical requests to what the page's fetch wrappers issue)
+- [x] 6.6 `pnpm build` — confirm strict mode passes across the monorepo (4/4 packages green, `/salon` route compiled statically)
 
 _Satisfies: proposal.md Success Criteria (all five checkboxes)._

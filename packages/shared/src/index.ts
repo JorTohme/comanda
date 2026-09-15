@@ -40,6 +40,22 @@ export type UpdateCategoriaInput = Partial<CreateCategoriaInput>;
 export type CreatePlatoInput = { nombre: string; precio: number; categoriaId: string; disponible?: boolean };
 export type UpdatePlatoInput = Partial<CreatePlatoInput>;
 
+export type EstadoMesa = "libre" | "ocupada" | "pedido_en_curso";
+
+export interface Mesa {
+  id: string;
+  nombre: string;
+  capacidad: number;
+  estado: EstadoMesa;
+  orgId: string | null;
+  sucursalId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateMesaInput = { nombre: string; capacidad: number; estado?: EstadoMesa };
+export type UpdateMesaInput = Partial<CreateMesaInput>;
+
 /**
  * Formats an integer number of centavos as a two-decimal peso string.
  * Pure integer arithmetic — never routes through float multiplication/division,
@@ -149,6 +165,38 @@ export async function updatePlato(baseUrl: string, id: string, input: UpdatePlat
 
 export async function deletePlato(baseUrl: string, id: string): Promise<void> {
   const url = `${baseUrl}/platos/${id}`;
+  const res = await fetch(url, { method: "DELETE" });
+  return throwIfNotOk(res, "DELETE", url);
+}
+
+export async function listMesas(baseUrl: string): Promise<Mesa[]> {
+  const url = `${baseUrl}/mesas`;
+  const res = await fetch(url);
+  return parseJsonOrThrow<Mesa[]>(res, "GET", url);
+}
+
+export async function createMesa(baseUrl: string, input: CreateMesaInput): Promise<Mesa> {
+  const url = `${baseUrl}/mesas`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJsonOrThrow<Mesa>(res, "POST", url);
+}
+
+export async function updateMesa(baseUrl: string, id: string, input: UpdateMesaInput): Promise<Mesa> {
+  const url = `${baseUrl}/mesas/${id}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJsonOrThrow<Mesa>(res, "PATCH", url);
+}
+
+export async function deleteMesa(baseUrl: string, id: string): Promise<void> {
+  const url = `${baseUrl}/mesas/${id}`;
   const res = await fetch(url, { method: "DELETE" });
   return throwIfNotOk(res, "DELETE", url);
 }
