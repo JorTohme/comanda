@@ -9,13 +9,32 @@ import {
   listPedidos,
   listPlatos,
   SIGUIENTE_ESTADO_PEDIDO,
+  type EstadoPedido,
   type Mesa,
   type Pedido,
   type Plato,
   type TipoServicio,
 } from "@comanda/shared";
+import { PageHeader } from "../_components/PageHeader";
+import { ErrorBanner } from "../_components/ErrorBanner";
+import { Card } from "../_components/Card";
+import { Button } from "../_components/Button";
+import { Badge } from "../_components/Badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+const INPUT_CLASSES =
+  "rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+
+const ESTADO_PEDIDO_TONE: Record<EstadoPedido, "neutral" | "info" | "success" | "warning" | "danger" | "brand"> = {
+  abierto: "neutral",
+  enviado_a_cocina: "info",
+  en_preparacion: "info",
+  listo: "warning",
+  entregado: "brand",
+  cobrado: "success",
+  cerrado: "neutral",
+};
 
 type ItemFormRow = { platoId: string; cantidad: string };
 
@@ -109,57 +128,58 @@ export default function PedidosPage() {
 
   if (cargando) {
     return (
-      <main>
-        <h1>Pedidos</h1>
-        <p>Cargando...</p>
-      </main>
+      <div className="space-y-8">
+        <PageHeader title="Pedidos" />
+        <p className="text-sm text-slate-500">Cargando...</p>
+      </div>
     );
   }
 
   return (
-    <main>
-      <h1>Pedidos</h1>
+    <div className="space-y-8">
+      <PageHeader title="Pedidos" />
 
-      {error && (
-        <p role="alert" style={{ color: "red" }}>
-          {error}
-        </p>
-      )}
+      <ErrorBanner message={error} />
 
-      <section>
-        <h2>Nuevo pedido</h2>
-        <form onSubmit={handleSubmitPedido}>
-          <select
-            value={form.tipoServicio}
-            onChange={(e) =>
-              setForm({ ...form, tipoServicio: e.target.value as TipoServicio, mesaId: "" })
-            }
-          >
-            <option value="mesa">Mesa</option>
-            <option value="barra">Barra</option>
-          </select>
-
-          {form.tipoServicio === "mesa" && (
+      <Card className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Nuevo pedido</h2>
+        <form className="space-y-3" onSubmit={handleSubmitPedido}>
+          <div className="flex flex-wrap gap-3">
             <select
-              value={form.mesaId}
-              onChange={(e) => setForm({ ...form, mesaId: e.target.value })}
-              required
+              value={form.tipoServicio}
+              onChange={(e) =>
+                setForm({ ...form, tipoServicio: e.target.value as TipoServicio, mesaId: "" })
+              }
+              className={INPUT_CLASSES}
             >
-              <option value="">Seleccionar mesa</option>
-              {mesasLibres.map((mesa) => (
-                <option key={mesa.id} value={mesa.id}>
-                  {mesa.nombre}
-                </option>
-              ))}
+              <option value="mesa">Mesa</option>
+              <option value="barra">Barra</option>
             </select>
-          )}
+
+            {form.tipoServicio === "mesa" && (
+              <select
+                value={form.mesaId}
+                onChange={(e) => setForm({ ...form, mesaId: e.target.value })}
+                required
+                className={INPUT_CLASSES}
+              >
+                <option value="">Seleccionar mesa</option>
+                {mesasLibres.map((mesa) => (
+                  <option key={mesa.id} value={mesa.id}>
+                    {mesa.nombre}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
 
           {form.items.map((item, index) => (
-            <div key={index}>
+            <div key={index} className="flex items-center gap-3">
               <select
                 value={item.platoId}
                 onChange={(e) => handleCambiarFila(index, { platoId: e.target.value })}
                 required
+                className={INPUT_CLASSES}
               >
                 <option value="">Seleccionar plato</option>
                 {platos.map((plato) => (
@@ -174,54 +194,55 @@ export default function PedidosPage() {
                 value={item.cantidad}
                 onChange={(e) => handleCambiarFila(index, { cantidad: e.target.value })}
                 required
+                className={INPUT_CLASSES}
               />
               {form.items.length > 1 && (
-                <button type="button" onClick={() => handleEliminarFila(index)}>
+                <Button type="button" variant="danger" size="sm" onClick={() => handleEliminarFila(index)}>
                   Quitar
-                </button>
+                </Button>
               )}
             </div>
           ))}
-          <button type="button" onClick={handleAgregarFila}>
+          <Button type="button" variant="secondary" onClick={handleAgregarFila}>
             Agregar línea
-          </button>
+          </Button>
 
-          <p>Total: {centavosToPesos(totalFormulario())}</p>
+          <p className="text-lg font-semibold text-slate-900">Total: {centavosToPesos(totalFormulario())}</p>
 
-          <button type="submit">Crear pedido</button>
+          <Button type="submit">Crear pedido</Button>
         </form>
-      </section>
+      </Card>
 
-      <section>
-        <h2>Pedidos</h2>
-        <ul style={{ listStyle: "none", padding: 0 }}>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Pedidos</h2>
+        <div className="space-y-3">
           {pedidos.map((pedido) => {
             const siguiente = SIGUIENTE_ESTADO_PEDIDO[pedido.estado];
             return (
-              <li
-                key={pedido.id}
-                style={{ border: "1px solid #ccc", borderRadius: "4px", padding: "1rem", marginBottom: "0.75rem" }}
-              >
-                <strong>{pedido.tipoServicio}</strong> — {pedido.estado}
-                <ul>
+              <Card key={pedido.id}>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold capitalize text-slate-900">{pedido.tipoServicio}</span>
+                  <Badge tone={ESTADO_PEDIDO_TONE[pedido.estado]}>{pedido.estado}</Badge>
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
                   {pedido.items.map((item) => (
                     <li key={item.id}>
                       {item.nombre} × {item.cantidad} a {centavosToPesos(item.precioUnitario)}
                     </li>
                   ))}
                 </ul>
-                <p>Total: {centavosToPesos(totalPedido(pedido))}</p>
+                <p className="mt-2 font-medium text-slate-900">Total: {centavosToPesos(totalPedido(pedido))}</p>
                 {siguiente && (
-                  <button type="button" onClick={() => handleAvanzar(pedido)}>
+                  <Button size="sm" className="mt-3" onClick={() => handleAvanzar(pedido)}>
                     Avanzar a {siguiente}
-                  </button>
+                  </Button>
                 )}
-              </li>
+              </Card>
             );
           })}
-        </ul>
+        </div>
       </section>
-    </main>
+    </div>
   );
 }
 

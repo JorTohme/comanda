@@ -9,15 +9,23 @@ import {
   type EstadoMesa,
   type Mesa,
 } from "@comanda/shared";
+import { PageHeader } from "../_components/PageHeader";
+import { ErrorBanner } from "../_components/ErrorBanner";
+import { Card } from "../_components/Card";
+import { Button } from "../_components/Button";
+import { Badge } from "../_components/Badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const FORM_VACIO = { nombre: "", capacidad: "" };
 
-const COLOR_ESTADO: Record<EstadoMesa, string> = {
-  libre: "#e8f5e9", // verde — disponible
-  ocupada: "#ffebee", // rojo — comensales sentados
-  pedido_en_curso: "#fff8e1", // ámbar — aseverado por el operador
+const INPUT_CLASSES =
+  "rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+
+const ESTADO_MESA_TONE: Record<EstadoMesa, { classes: string; badge: "success" | "danger" | "warning" }> = {
+  libre: { classes: "border-emerald-200 bg-emerald-50 text-emerald-900", badge: "success" },
+  ocupada: { classes: "border-rose-200 bg-rose-50 text-rose-900", badge: "danger" },
+  pedido_en_curso: { classes: "border-amber-200 bg-amber-50 text-amber-900", badge: "warning" },
 };
 
 const LABEL_ESTADO: Record<EstadoMesa, string> = {
@@ -103,72 +111,58 @@ export default function SalonPage() {
 
   if (cargando) {
     return (
-      <main>
-        <h1>Salón</h1>
-        <p>Cargando...</p>
-      </main>
+      <div className="space-y-8">
+        <PageHeader title="Salón" />
+        <p className="text-sm text-slate-500">Cargando...</p>
+      </div>
     );
   }
 
   return (
-    <main>
-      <h1>Salón</h1>
+    <div className="space-y-8">
+      <PageHeader title="Salón" />
 
-      {error && (
-        <p role="alert" style={{ color: "red" }}>
-          {error}
-        </p>
-      )}
+      <ErrorBanner message={error} />
 
-      <section>
-        <h2>Mesas</h2>
-        <ul
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-            gap: "0.75rem",
-            listStyle: "none",
-            padding: 0,
-          }}
-        >
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Mesas</h2>
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 list-none p-0">
           {mesas.map((mesa) => (
             <li key={mesa.id}>
               <button
                 type="button"
                 onClick={() => handleCiclarEstado(mesa)}
-                style={{
-                  backgroundColor: COLOR_ESTADO[mesa.estado],
-                  width: "100%",
-                  padding: "1rem",
-                  border: "1px solid #ccc",
-                  borderRadius: "4px",
-                  textAlign: "left",
-                  cursor: "pointer",
-                }}
+                className={`w-full rounded-lg border p-4 text-left transition hover:opacity-90 ${ESTADO_MESA_TONE[mesa.estado].classes}`}
               >
                 <strong>{mesa.nombre}</strong>
                 <br />
                 Capacidad: {mesa.capacidad}
                 <br />
-                <span>{LABEL_ESTADO[mesa.estado]}</span>
+                <Badge tone={ESTADO_MESA_TONE[mesa.estado].badge}>{LABEL_ESTADO[mesa.estado]}</Badge>
               </button>
-              <button type="button" onClick={() => handleEditarMesa(mesa)}>
-                Editar
-              </button>
-              <button type="button" onClick={() => handleEliminarMesa(mesa.id)}>
-                Eliminar
-              </button>
+              <div className="mt-2 flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => handleEditarMesa(mesa)}>
+                  Editar
+                </Button>
+                <Button variant="danger" size="sm" onClick={() => handleEliminarMesa(mesa.id)}>
+                  Eliminar
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
+      </section>
 
-        <form onSubmit={handleSubmitMesa}>
+      <Card className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Agregar mesa</h2>
+        <form className="flex flex-wrap items-end gap-3" onSubmit={handleSubmitMesa}>
           <input
             type="text"
             placeholder="Nombre de mesa"
             value={form.nombre}
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
             required
+            className={INPUT_CLASSES}
           />
           <input
             type="number"
@@ -177,16 +171,17 @@ export default function SalonPage() {
             value={form.capacidad}
             onChange={(e) => setForm({ ...form, capacidad: e.target.value })}
             required
+            className={INPUT_CLASSES}
           />
-          <button type="submit">{editandoMesaId ? "Guardar cambios" : "Agregar mesa"}</button>
+          <Button type="submit">{editandoMesaId ? "Guardar cambios" : "Agregar mesa"}</Button>
           {editandoMesaId && (
-            <button type="button" onClick={handleCancelarEdicion}>
+            <Button type="button" variant="secondary" onClick={handleCancelarEdicion}>
               Cancelar
-            </button>
+            </Button>
           )}
         </form>
-      </section>
-    </main>
+      </Card>
+    </div>
   );
 }
 

@@ -14,10 +14,17 @@ import {
   type Categoria,
   type Plato,
 } from "@comanda/shared";
+import { PageHeader } from "../_components/PageHeader";
+import { ErrorBanner } from "../_components/ErrorBanner";
+import { Card } from "../_components/Card";
+import { Button } from "../_components/Button";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const FORM_VACIO = { nombre: "", precioPesos: "", categoriaId: "", disponible: true };
+
+const INPUT_CLASSES =
+  "rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
 
 export default function CatalogoPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -125,66 +132,72 @@ export default function CatalogoPage() {
 
   if (cargando) {
     return (
-      <main>
-        <h1>Catálogo</h1>
-        <p>Cargando...</p>
-      </main>
+      <div className="space-y-8">
+        <PageHeader title="Catálogo" />
+        <p className="text-sm text-slate-500">Cargando...</p>
+      </div>
     );
   }
 
   return (
-    <main>
-      <h1>Catálogo</h1>
+    <div className="space-y-8">
+      <PageHeader title="Catálogo" description="Gestioná categorías y platos" />
 
-      {error && (
-        <p role="alert" style={{ color: "red" }}>
-          {error}
-        </p>
-      )}
+      <ErrorBanner message={error} />
 
-      <section>
-        <h2>Categorías</h2>
-        <form onSubmit={handleCrearCategoria}>
+      <Card className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Categorías</h2>
+        <form className="flex flex-wrap items-end gap-3" onSubmit={handleCrearCategoria}>
           <input
             type="text"
             placeholder="Nombre de categoría"
             value={nuevaCategoria}
             onChange={(e) => setNuevaCategoria(e.target.value)}
             required
+            className={INPUT_CLASSES}
           />
-          <button type="submit">Agregar categoría</button>
+          <Button type="submit">Agregar categoría</Button>
         </form>
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {categorias.map((categoria) => (
-              <tr key={categoria.id}>
-                <td>{categoria.nombre}</td>
-                <td>
-                  <button type="button" onClick={() => handleEliminarCategoria(categoria.id)}>
-                    Eliminar
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Nombre</th>
+                <th className="px-3 py-2 font-medium">Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {categorias.map((categoria) => (
+                <tr key={categoria.id} className="hover:bg-slate-50">
+                  <td className="px-3 py-2">{categoria.nombre}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleEliminarCategoria(categoria.id)}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
-      <section>
-        <h2>Platos</h2>
-        <form onSubmit={handleSubmitPlato}>
+      <Card className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Platos</h2>
+        <form className="flex flex-wrap items-end gap-3" onSubmit={handleSubmitPlato}>
           <input
             type="text"
             placeholder="Nombre del plato"
             value={form.nombre}
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
             required
+            className={INPUT_CLASSES}
           />
           <input
             type="text"
@@ -193,11 +206,13 @@ export default function CatalogoPage() {
             value={form.precioPesos}
             onChange={(e) => setForm({ ...form, precioPesos: e.target.value })}
             required
+            className={INPUT_CLASSES}
           />
           <select
             value={form.categoriaId}
             onChange={(e) => setForm({ ...form, categoriaId: e.target.value })}
             required
+            className={INPUT_CLASSES}
           >
             <option value="">Seleccionar categoría</option>
             {categorias.map((categoria) => (
@@ -206,58 +221,64 @@ export default function CatalogoPage() {
               </option>
             ))}
           </select>
-          <label>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={form.disponible}
               onChange={(e) => setForm({ ...form, disponible: e.target.checked })}
+              className="accent-brand-600"
             />
             Disponible
           </label>
-          <button type="submit">{editandoPlatoId ? "Guardar cambios" : "Agregar plato"}</button>
+          <Button type="submit">{editandoPlatoId ? "Guardar cambios" : "Agregar plato"}</Button>
           {editandoPlatoId && (
-            <button type="button" onClick={handleCancelarEdicion}>
+            <Button type="button" variant="secondary" onClick={handleCancelarEdicion}>
               Cancelar
-            </button>
+            </Button>
           )}
         </form>
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Precio</th>
-              <th>Categoría</th>
-              <th>Disponible</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {platos.map((plato) => (
-              <tr key={plato.id}>
-                <td>{plato.nombre}</td>
-                <td>{centavosToPesos(plato.precio)}</td>
-                <td>{nombreCategoria(plato.categoriaId)}</td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={plato.disponible}
-                    onChange={() => handleToggleDisponible(plato)}
-                  />
-                </td>
-                <td>
-                  <button type="button" onClick={() => handleEditarPlato(plato)}>
-                    Editar
-                  </button>
-                  <button type="button" onClick={() => handleEliminarPlato(plato.id)}>
-                    Eliminar
-                  </button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Nombre</th>
+                <th className="px-3 py-2 font-medium">Precio</th>
+                <th className="px-3 py-2 font-medium">Categoría</th>
+                <th className="px-3 py-2 font-medium">Disponible</th>
+                <th className="px-3 py-2 font-medium">Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-    </main>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {platos.map((plato) => (
+                <tr key={plato.id} className="hover:bg-slate-50">
+                  <td className="px-3 py-2">{plato.nombre}</td>
+                  <td className="px-3 py-2">{centavosToPesos(plato.precio)}</td>
+                  <td className="px-3 py-2">{nombreCategoria(plato.categoriaId)}</td>
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={plato.disponible}
+                      onChange={() => handleToggleDisponible(plato)}
+                      className="accent-brand-600"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => handleEditarPlato(plato)}>
+                        Editar
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => handleEliminarPlato(plato.id)}>
+                        Eliminar
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
   );
 }
 

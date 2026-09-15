@@ -15,12 +15,12 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main>
+    <div className="space-y-8">
       <h1>Comanda — Consola</h1>
       <p>
         api ({API_URL}):{" "}
         {health === "loading" ? "checking..." : health === "unreachable" ? "unreachable" : health.status}
       </p>
-    </main>
+    </div>
   );
 }
