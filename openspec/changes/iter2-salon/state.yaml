@@ -14,7 +14,41 @@ phases:
   tasks:
     status: done
   apply:
-    status: pending
+    status: in_progress
+    apply_progress:
+      - pr: iter2-salon-01-backend-mesas
+        phases_done: [1, 2, 3]
+        pr_url: https://github.com/JorTohme/comanda/pull/6
+        tracker_pr_url: https://github.com/JorTohme/comanda/pull/5
+        base_branch: iter2-salon
+        note: >
+          Prisma schema/migration (phase 1: enum EstadoMesa + model Mesa,
+          additive migration 20260915014337_add_mesa, Categoria/Plato
+          untouched), MesasService (phase 2, RED-first: mesas.service.spec.ts
+          written and confirmed failing on missing module before
+          mesas.service.ts existed, then GREEN — create defaults estado to
+          libre, honors explicit estado, findAll -> findMany({}), update
+          persists each of the three estado values via the same PATCH
+          endpoint, update/remove map Prisma P2025 to NotFoundException,
+          remove returns the deleted row; no FK pre-check since Mesa
+          references nothing), and the HTTP layer (phase 3: CreateMesaDto/
+          UpdateMesaDto class-validator DTOs, MesasController mirroring
+          PlatosController's shape, MesasModule, wired into app.module.ts)
+          all complete and committed on branch
+          iter2-salon-01-backend-mesas off tracker branch iter2-salon.
+          pnpm --filter api test 25/25 green, pnpm --filter api lint green,
+          pnpm --filter api build green. Manual smoke test run against local
+          Postgres 16 (docker compose, already running): POST /mesas valid
+          -> 201 estado=libre; POST capacidad:0 -> 400; POST invalid estado
+          "reservada" -> 400; POST unknown field -> 400; GET /mesas -> 200
+          array; PATCH through all three estado values (libre/ocupada/
+          pedido_en_curso) -> 200 each; PATCH nonexistent id -> 404; PATCH
+          invalid capacidad -> 400; DELETE existing -> 200; DELETE
+          nonexistent -> 404. Test rows cleaned up after verification.
+          packages/shared, apps/web/app/salon, and the openspec/config.yaml
+          context refresh (phases 4-6) intentionally untouched for PR 2 off
+          this branch. Opened as PR #6 (base: tracker branch iter2-salon,
+          PR #5 draft/no-merge).
   verify:
     status: pending
   archive:
