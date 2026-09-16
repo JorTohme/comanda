@@ -12,6 +12,6 @@ export class PlatosController {
   constructor(@Inject(PlatosService) private readonly platosService: PlatosService) {}
   @Roles(RolUsuario.admin) @Post() create(@Body() dto: CreatePlatoDto, @CurrentUser() user: TenantContext) { return this.platosService.create(dto, user); }
   @Get() findAll(@Query("categoriaId") categoriaId: string | undefined, @CurrentUser() user: TenantContext) { return this.platosService.findAll(categoriaId, user); }
-  @Roles(RolUsuario.admin) @Patch(":id") update(@Param("id") id: string, @Body() dto: UpdatePlatoDto, @CurrentUser() user: TenantContext) { return this.platosService.update(id, dto, user); }
+  @Roles(RolUsuario.admin, RolUsuario.cocina) @Patch(":id") update(@Param("id") id: string, @Body() dto: UpdatePlatoDto, @CurrentUser() user: TenantContext) { return this.platosService.update(id, dto, user); }
   @Roles(RolUsuario.admin) @Delete(":id") remove(@Param("id") id: string, @CurrentUser() user: TenantContext) { return this.platosService.remove(id, user); }
 }

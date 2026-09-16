@@ -1,24 +1,48 @@
-import { useEffect, useState } from "react";
-import { pingApi, type HealthStatus } from "@comanda/shared";
+import { useState } from "react";
+import type { AuthSession } from "@comanda/shared";
+import { LoginScreen } from "./LoginScreen";
+import { MozoView } from "./MozoView";
+import { CocinaView } from "./CocinaView";
+import { UnsupportedRoleScreen } from "./UnsupportedRoleScreen";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+const SESSION_KEY = "comanda.session";
+const TOKEN_KEY = "comanda.accessToken";
+
+function readStoredSession(): AuthSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as AuthSession) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
-  const [health, setHealth] = useState<HealthStatus | "loading" | "unreachable">("loading");
+  const [session, setSession] = useState<AuthSession | null>(() => readStoredSession());
 
-  useEffect(() => {
-    pingApi(API_URL)
-      .then(setHealth)
-      .catch(() => setHealth("unreachable"));
-  }, []);
+  function handleLogin(newSession: AuthSession) {
+    localStorage.setItem(TOKEN_KEY, newSession.accessToken);
+    localStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
+    setSession(newSession);
+  }
 
-  return (
-    <main>
-      <h1>Comanda — Operativa</h1>
-      <p>
-        api ({API_URL}):{" "}
-        {health === "loading" ? "checking..." : health === "unreachable" ? "unreachable" : health.status}
-      </p>
-    </main>
-  );
+  function handleLogout() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(SESSION_KEY);
+    setSession(null);
+  }
+
+  if (!session) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  if (session.user.rol === "mozo") {
+    return <MozoView session={session} onLogout={handleLogout} />;
+  }
+
+  if (session.user.rol === "cocina") {
+    return <CocinaView session={session} onLogout={handleLogout} />;
+  }
+
+  return <UnsupportedRoleScreen session={session} onLogout={handleLogout} />;
 }
