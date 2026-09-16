@@ -1,10 +1,15 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { EstadoMesa, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateMesaDto } from "./dto/create-mesa.dto";
 import { UpdateMesaDto } from "./dto/update-mesa.dto";
 
 function isNotFoundError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2025";
+}
+
+function isForeignKeyViolationError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2003";
 }
 
 @Injectable()
@@ -44,7 +49,21 @@ export class MesasService {
       if (isNotFoundError(error)) {
         throw new NotFoundException(`Mesa ${id} not found`);
       }
+      if (isForeignKeyViolationError(error)) {
+        throw new ConflictException(`Mesa ${id} is referenced by an existing Pedido`);
+      }
       throw error;
     }
+  }
+
+  async assertMesaExists(mesaId: string) {
+    const mesa = await this.prisma.mesa.findUnique({ where: { id: mesaId } });
+    if (!mesa) {
+      throw new BadRequestException(`Mesa ${mesaId} not found`);
+    }
+  }
+
+  async marcarEstado(tx: Prisma.TransactionClient, mesaId: string, estado: EstadoMesa) {
+    return tx.mesa.update({ where: { id: mesaId }, data: { estado } });
   }
 }

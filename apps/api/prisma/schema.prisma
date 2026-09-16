@@ -28,6 +28,7 @@ model Plato {
   sucursalId  String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  itemsPedido ItemPedido[]
 }
 
 enum EstadoMesa {
@@ -45,4 +46,44 @@ model Mesa {
   sucursalId String?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+  pedidos    Pedido[]
+}
+
+enum TipoServicio {
+  mesa
+  barra
+}
+
+enum EstadoPedido {
+  abierto
+  enviado_a_cocina
+  en_preparacion
+  listo
+  entregado
+  cobrado
+  cerrado
+}
+
+model Pedido {
+  id           String       @id @default(uuid())
+  tipoServicio TipoServicio
+  mesaId       String?
+  mesa         Mesa?        @relation(fields: [mesaId], references: [id], onDelete: Restrict)
+  estado       EstadoPedido @default(abierto)
+  items        ItemPedido[]
+  orgId        String?
+  sucursalId   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model ItemPedido {
+  id             String @id @default(uuid())
+  pedidoId       String
+  pedido         Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  platoId        String
+  plato          Plato  @relation(fields: [platoId], references: [id], onDelete: Restrict)
+  nombre         String
+  precioUnitario Int
+  cantidad       Int
 }

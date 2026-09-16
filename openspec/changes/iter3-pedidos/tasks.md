@@ -50,10 +50,10 @@ Only the tracker PR merges to `main`; PR 2 targets PR 1's branch, PR 3 targets P
 
 ## 1. Prisma Schema & Migration
 
-- [ ] 1.1 Add `enum TipoServicio { mesa barra }`, `enum EstadoPedido { abierto enviado_a_cocina en_preparacion listo entregado cobrado cerrado }`, `model Pedido`, and `model ItemPedido` to `apps/api/prisma/schema.prisma` exactly per design.md Interfaces/Contracts (`Pedido.mesaId` and `ItemPedido.platoId` both `onDelete: Restrict`; `ItemPedido.pedidoId` `onDelete: Cascade`; nullable `orgId`/`sucursalId` on `Pedido`)
-- [ ] 1.2 Add back-relation fields only (no new column): `Mesa.pedidos Pedido[]`, `Plato.itemsPedido ItemPedido[]`
-- [ ] 1.3 Run `docker compose up -d` then `prisma migrate dev` to generate the additive migration under `apps/api/prisma/migrations/` — confirm `Categoria`/`Plato`/`Mesa` columns are untouched
-- [ ] 1.4 Run `pnpm --filter api test` — confirm still green (no domain code yet)
+- [x] 1.1 Add `enum TipoServicio { mesa barra }`, `enum EstadoPedido { abierto enviado_a_cocina en_preparacion listo entregado cobrado cerrado }`, `model Pedido`, and `model ItemPedido` to `apps/api/prisma/schema.prisma` exactly per design.md Interfaces/Contracts (`Pedido.mesaId` and `ItemPedido.platoId` both `onDelete: Restrict`; `ItemPedido.pedidoId` `onDelete: Cascade`; nullable `orgId`/`sucursalId` on `Pedido`)
+- [x] 1.2 Add back-relation fields only (no new column): `Mesa.pedidos Pedido[]`, `Plato.itemsPedido ItemPedido[]`
+- [x] 1.3 Run `docker compose up -d` then `prisma migrate dev` to generate the additive migration under `apps/api/prisma/migrations/` — confirm `Categoria`/`Plato`/`Mesa` columns are untouched
+- [x] 1.4 Run `pnpm --filter api test` — confirm still green (no domain code yet)
 
 _Satisfies: pedidos spec "Create Pedido with items", "tipoServicio determines mesaId requirement", "Linear EstadoPedido transitions"; design.md Interfaces/Contracts; proposal.md Success Criteria "migrate dev creates Pedido/ItemPedido + both enums without altering Categoria/Plato/Mesa"._
 
@@ -61,24 +61,24 @@ _Satisfies: pedidos spec "Create Pedido with items", "tipoServicio determines me
 
 This section modifies code that shipped in Iter 1/2, not new Pedidos code. The new `Restrict` FKs on `ItemPedido.platoId` and `Pedido.mesaId` mean `DELETE /platos/:id` or `DELETE /mesas/:id` against a row referenced by an existing `Pedido` now raises Prisma error P2003 — and the existing `isNotFoundError` helpers in both services only catch P2025, so P2003 falls through to an unhandled 500. RED-first, same shape as the existing P2025 tests.
 
-- [ ] 2.1 In `apps/api/src/catalogo/platos/platos.service.spec.ts`, add a failing test: `remove()` on a `Plato` referenced by an `ItemPedido` (mock `prisma.plato.delete` rejecting with `{ code: "P2003" }`) MUST throw `ConflictException`, not the unhandled Prisma error
-- [ ] 2.2 Run `pnpm --filter api test` — confirm 2.1 fails for the right reason (P2003 currently rethrown as-is, test expects `ConflictException`)
-- [ ] 2.3 In `apps/api/src/catalogo/platos/platos.service.ts`, add a P2003 check (alongside the existing P2025 `isNotFoundError` check) that throws `ConflictException` in `remove()` — make 2.1 pass
-- [ ] 2.4 In `apps/api/src/salon/mesas/mesas.service.spec.ts`, add the equivalent failing test: `remove()` on a `Mesa` referenced by an existing `Pedido` (mock `prisma.mesa.delete` rejecting with `{ code: "P2003" }`) MUST throw `ConflictException`
-- [ ] 2.5 Run `pnpm --filter api test` — confirm 2.4 fails for the right reason
-- [ ] 2.6 In `apps/api/src/salon/mesas/mesas.service.ts`, add the same P2003 → `ConflictException` mapping in `remove()` — make 2.4 pass
-- [ ] 2.7 In `mesas.service.spec.ts`, add failing tests for two new methods the cross-module coupling needs: `assertMesaExists(mesaId)` throws `BadRequestException` when no `Mesa` matches; `marcarEstado(tx, mesaId, estado)` calls `tx.mesa.update({ where: { id: mesaId }, data: { estado } })` against the passed transaction client, not `this.prisma`
-- [ ] 2.8 Run `pnpm --filter api test` — confirm 2.7 fails (methods don't exist yet)
-- [ ] 2.9 Implement `assertMesaExists` and `marcarEstado(tx: Prisma.TransactionClient, mesaId: string, estado: EstadoMesa)` in `mesas.service.ts` — make 2.7 pass
-- [ ] 2.10 Add `exports: [MesasService]` to `apps/api/src/salon/mesas/mesas.module.ts`
-- [ ] 2.11 Run `pnpm --filter api test` — confirm the full suite is green with no regression on existing `Plato`/`Mesa` tests
+- [x] 2.1 In `apps/api/src/catalogo/platos/platos.service.spec.ts`, add a failing test: `remove()` on a `Plato` referenced by an `ItemPedido` (mock `prisma.plato.delete` rejecting with `{ code: "P2003" }`) MUST throw `ConflictException`, not the unhandled Prisma error
+- [x] 2.2 Run `pnpm --filter api test` — confirm 2.1 fails for the right reason (P2003 currently rethrown as-is, test expects `ConflictException`)
+- [x] 2.3 In `apps/api/src/catalogo/platos/platos.service.ts`, add a P2003 check (alongside the existing P2025 `isNotFoundError` check) that throws `ConflictException` in `remove()` — make 2.1 pass
+- [x] 2.4 In `apps/api/src/salon/mesas/mesas.service.spec.ts`, add the equivalent failing test: `remove()` on a `Mesa` referenced by an existing `Pedido` (mock `prisma.mesa.delete` rejecting with `{ code: "P2003" }`) MUST throw `ConflictException`
+- [x] 2.5 Run `pnpm --filter api test` — confirm 2.4 fails for the right reason
+- [x] 2.6 In `apps/api/src/salon/mesas/mesas.service.ts`, add the same P2003 → `ConflictException` mapping in `remove()` — make 2.4 pass
+- [x] 2.7 In `mesas.service.spec.ts`, add failing tests for two new methods the cross-module coupling needs: `assertMesaExists(mesaId)` throws `BadRequestException` when no `Mesa` matches; `marcarEstado(tx, mesaId, estado)` calls `tx.mesa.update({ where: { id: mesaId }, data: { estado } })` against the passed transaction client, not `this.prisma`
+- [x] 2.8 Run `pnpm --filter api test` — confirm 2.7 fails (methods don't exist yet)
+- [x] 2.9 Implement `assertMesaExists` and `marcarEstado(tx: Prisma.TransactionClient, mesaId: string, estado: EstadoMesa)` in `mesas.service.ts` — make 2.7 pass
+- [x] 2.10 Add `exports: [MesasService]` to `apps/api/src/salon/mesas/mesas.module.ts`
+- [x] 2.11 Run `pnpm --filter api test` — confirm the full suite is green with no regression on existing `Plato`/`Mesa` tests
 
 _Satisfies: design.md Architecture Decisions "`ItemPedido.platoId` FK" and "`Pedido.mesaId` FK" (P2003 → 409 mapping, explicitly required, not optional); "Cross-module coupling" (`assertMesaExists`, `marcarEstado`, `MesasModule` export)._
 
 ## 3. Pedidos Service (test-first)
 
-- [ ] 3.1 Create `apps/api/src/pedidos/estado-pedido.ts` — the `SIGUIENTE: Record<EstadoPedido, EstadoPedido | null>` linear-chain map exactly per design.md, plus an `assertTransicionValida(actual, destino)` guard throwing `BadRequestException` on mismatch
-- [ ] 3.2 Write `apps/api/src/pedidos/pedidos.service.spec.ts` — failing tests against a mocked `PrismaService` (with `$transaction: jest.fn(async (cb) => cb(prisma))`) and a mocked `MesasService` (`{ assertMesaExists: jest.fn(), marcarEstado: jest.fn() }`), covering:
+- [x] 3.1 Create `apps/api/src/pedidos/estado-pedido.ts` — the `SIGUIENTE: Record<EstadoPedido, EstadoPedido | null>` linear-chain map exactly per design.md, plus an `assertTransicionValida(actual, destino)` guard throwing `BadRequestException` on mismatch
+- [x] 3.2 Write `apps/api/src/pedidos/pedidos.service.spec.ts` — failing tests against a mocked `PrismaService` (with `$transaction: jest.fn(async (cb) => cb(prisma))`) and a mocked `MesasService` (`{ assertMesaExists: jest.fn(), marcarEstado: jest.fn() }`), covering:
   - `create`: snapshots `nombre`/`precioUnitario` from `Plato` at creation (not a live read)
   - `create`: rejects an unknown `platoId` with `BadRequestException`, persists nothing
   - `create`: `tipoServicio=mesa` without `mesaId` → `BadRequestException`
@@ -89,9 +89,9 @@ _Satisfies: design.md Architecture Decisions "`ItemPedido.platoId` FK" and "`Ped
   - `updateEstado`: table-driven over **every** `(actual, destino)` pair in `EstadoPedido` — the 6 legal linear transitions pass, all others (skips, reversals, no-ops) throw `BadRequestException`, including the terminal `cerrado → anything`
   - `updateEstado`: reaching `cerrado` on a `mesa` pedido calls `marcarEstado(tx, mesaId, "libre")`; on a `barra` pedido it does not
   - `updateEstado`/`findOne` on a nonexistent id maps P2025 → `NotFoundException`
-- [ ] 3.3 Run `pnpm --filter api test` — confirm 3.2 fails for the right reason (module doesn't exist yet)
-- [ ] 3.4 Create `apps/api/src/pedidos/pedidos.service.ts` implementing `create`, `findAll`, `findOne`, `updateEstado` against `PrismaService` + injected `MesasService`, using the interactive `$transaction` form and `estado-pedido.ts`'s guard — make 3.2 pass
-- [ ] 3.5 Run `pnpm --filter api test` — confirm all `PedidosService` tests pass and no regression elsewhere
+- [x] 3.3 Run `pnpm --filter api test` — confirm 3.2 fails for the right reason (module doesn't exist yet)
+- [x] 3.4 Create `apps/api/src/pedidos/pedidos.service.ts` implementing `create`, `findAll`, `findOne`, `updateEstado` against `PrismaService` + injected `MesasService`, using the interactive `$transaction` form and `estado-pedido.ts`'s guard — make 3.2 pass
+- [x] 3.5 Run `pnpm --filter api test` — confirm all `PedidosService` tests pass and no regression elsewhere
 
 _Satisfies: pedidos spec "Create Pedido with items", "tipoServicio determines mesaId requirement", "platoId FK validation", "Linear EstadoPedido transitions", "Mesa coupling on Pedido lifecycle"; salon spec (MODIFIED) "pedido_en_curso has a manual path and an automatic driver"; design.md Architecture Decisions "Transition map", "Cross-module coupling", "Transaction boundary"._
 
