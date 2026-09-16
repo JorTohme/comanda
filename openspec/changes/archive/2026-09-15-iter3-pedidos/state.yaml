@@ -14,7 +14,7 @@ phases:
   tasks:
     status: done
   apply:
-    status: in_progress
+    status: done
     apply_progress:
       - pr: iter3-pedidos-01-backend
         phases_done: [1, 2, 3]
@@ -68,10 +68,58 @@ phases:
           is currently byte-identical to main and GitHub rejects an
           empty-diff PR. The tracker PR must be opened once this PR (#8)
           merges into iter3-pedidos and gives it a diff vs main.
+      - pr: iter3-pedidos-02-http-shared-ui
+        phases_done: [4, 5, 6, 7]
+        pr_url: null
+        tracker_pr_url: null
+        base_branch: iter3-pedidos-01-backend
+        note: >
+          Landed as commit 09f370e "feat(api,web): Pedidos HTTP layer, shared
+          contracts and admin UI": PedidosController (POST/GET/GET:id/PATCH:id/
+          estado), hand-written DTOs (no @nestjs/mapped-types), PedidosModule
+          wired into AppModule; global ValidationPipe confirmed rejecting
+          invalid payloads (empty items, cantidad<1, unknown enum values,
+          unknown fields) via curl smoke test. packages/shared gained
+          TipoServicio/EstadoPedido types, Pedido/ItemPedido interfaces,
+          CreatePedidoInput, SIGUIENTE_ESTADO_PEDIDO, and listPedidos/
+          createPedido/avanzarEstadoPedido fetch wrappers. apps/web/app/pedidos
+          admin page shipped mirroring salon/catalogo conventions. openspec/
+          config.yaml context block refreshed to include the pedidos module.
+          pnpm --filter api test 104/104 green at commit time. Deviation from
+          the tasks.md-forecast 3-way chain (PR1/PR2/PR3): sections 4-7 landed
+          together as a single commit directly on main rather than as two
+          separate chained PRs (PR2 targeting PR1's branch, PR3 targeting
+          PR2's), continuing the same tracker-PR gap noted in the PR1 entry
+          above -- no tracker PR for iter3-pedidos was ever opened, so there
+          was no base to chain feature branches against. No functional impact:
+          all tasks.md sections 4-7 checkboxes are complete and the shipped
+          code matches design.md's HTTP/contract/UI specification.
   verify:
-    status: pending
+    status: done
+    verdict: pass
+    verify_report_path: openspec/changes/iter3-pedidos/verify-report.md
+    summary: >
+      Bookkeeping-close-out verify (2026-09-15), lighter than iter2's
+      independent-re-verification pass per explicit task scope: fresh
+      pnpm --filter api test run (107/107 passing, includes estado-pedido,
+      pedidos.service, mesas.service, platos.service, categorias.service,
+      and auth/jwt suites -- no regressions) and fresh pnpm --filter web
+      build (succeeds, /pedidos route compiles statically at 3.63 kB).
+      Source inspection of apps/api/src/pedidos/pedidos.service.ts against
+      design.md's Architecture Decisions confirms no drift: transition
+      guard via estado-pedido.ts's SIGUIENTE map, interactive
+      $transaction wrapping the Pedido/ItemPedido write and the
+      MesasService.marcarEstado call, tipoServicio/mesaId cross-checks,
+      Plato snapshot into ItemPedido, cerrado -> libre coupling. The only
+      difference from design.md's sketched signature is an added `tenant:
+      TenantContext` parameter threaded through every method, which comes
+      from the separate, later, out-of-scope tenant-isolation work
+      (commit 4b8268f) and is not a regression or a deviation of this
+      change. No live curl/browser re-verification was performed in this
+      pass (already covered by the apply-phase notes and tasks.md 7.4/7.5);
+      see verify-report.md for full detail and the resulting warning.
   archive:
-    status: pending
+    status: done
 open_decisions:
   - id: research
     question: "¿Corremos sdd-research antes de la propuesta?"
@@ -93,4 +141,4 @@ open_decisions:
     question: "¿El enum tipo_servicio incluye takeaway/delivery ya, o solo mesa/barra?"
     status: confirmed
     answer: "Solo mesa/barra por ahora (YAGNI) — a diferencia de Mesa.pedido_en_curso, no hay ninguna función que necesite construir takeaway/delivery esta iteración; se agregan cuando Fase 2 los implemente."
-next_recommended: sdd-apply
+next_recommended: null
