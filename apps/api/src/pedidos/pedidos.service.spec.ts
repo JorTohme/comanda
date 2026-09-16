@@ -5,6 +5,7 @@ import { PedidosService } from "./pedidos.service";
 import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MesasService } from "../salon/mesas/mesas.service";
+import { CajaService } from "../caja/caja.service";
 import { SIGUIENTE } from "./estado-pedido";
 
 const ESTADOS: EstadoPedido[] = [
@@ -40,16 +41,21 @@ describe("PedidosService", () => {
     assertMesaExists: jest.fn(),
     marcarEstado: jest.fn(),
   };
+  const caja = {
+    assertTurnoAbierto: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.resetAllMocks();
     prisma.$transaction.mockImplementation(async (cb: (tx: typeof prisma) => unknown) => cb(prisma));
+    caja.assertTurnoAbierto.mockResolvedValue({ id: "turno-1" });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         PedidosService,
         { provide: PrismaService, useValue: prisma },
         { provide: MesasService, useValue: mesas },
+        { provide: CajaService, useValue: caja },
       ],
     }).compile();
 
@@ -188,11 +194,18 @@ describe("PedidosService", () => {
             const result = await service.updateEstado("pedido-1", destino, TENANT);
 
             expect(result.estado).toBe(destino);
+            const expectedData =
+              destino === "cobrado" ? { estado: destino, turnoCajaId: "turno-1" } : { estado: destino };
             expect(prisma.pedido.update).toHaveBeenCalledWith({
               where: { id: "pedido-1" },
-              data: { estado: destino },
+              data: expectedData,
               include: { items: true },
             });
+            if (destino === "cobrado") {
+              expect(caja.assertTurnoAbierto).toHaveBeenCalledWith(TENANT);
+            } else {
+              expect(caja.assertTurnoAbierto).not.toHaveBeenCalled();
+            }
           } else {
             await expect(service.updateEstado("pedido-1", destino, TENANT)).rejects.toBeInstanceOf(
               BadRequestException,
@@ -237,6 +250,54 @@ describe("PedidosService", () => {
       await expect(service.updateEstado("missing-id", "enviado_a_cocina", TENANT)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it("transitioning entregado -> cobrado calls cajaService.assertTurnoAbierto(tenant)", async () => {
+      prisma.pedido.findFirst.mockResolvedValue({
+        id: "pedido-1",
+        estado: "entregado",
+        tipoServicio: "barra",
+        mesaId: null,
+      });
+      prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cobrado", items: [] });
+
+      await service.updateEstado("pedido-1", "cobrado", TENANT);
+
+      expect(caja.assertTurnoAbierto).toHaveBeenCalledWith(TENANT);
+    });
+
+    it("on success, tx.pedido.update data includes turnoCajaId from the open turno alongside estado cobrado", async () => {
+      caja.assertTurnoAbierto.mockResolvedValue({ id: "turno-42" });
+      prisma.pedido.findFirst.mockResolvedValue({
+        id: "pedido-1",
+        estado: "entregado",
+        tipoServicio: "barra",
+        mesaId: null,
+      });
+      prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cobrado", items: [] });
+
+      await service.updateEstado("pedido-1", "cobrado", TENANT);
+
+      expect(prisma.pedido.update).toHaveBeenCalledWith({
+        where: { id: "pedido-1" },
+        data: { estado: "cobrado", turnoCajaId: "turno-42" },
+        include: { items: true },
+      });
+    });
+
+    it("rejects entregado -> cobrado with no open turno and persists nothing", async () => {
+      caja.assertTurnoAbierto.mockRejectedValue(new BadRequestException("No hay un turno de caja abierto"));
+      prisma.pedido.findFirst.mockResolvedValue({
+        id: "pedido-1",
+        estado: "entregado",
+        tipoServicio: "barra",
+        mesaId: null,
+      });
+
+      await expect(service.updateEstado("pedido-1", "cobrado", TENANT)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(prisma.pedido.update).not.toHaveBeenCalled();
     });
   });
 

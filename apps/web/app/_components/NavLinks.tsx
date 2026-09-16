@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/catalogo", label: "Catálogo" },
   { href: "/salon", label: "Salón" },
   { href: "/pedidos", label: "Pedidos" },
+  { href: "/caja", label: "Caja" },
 ];
 
 export function NavLinks() {

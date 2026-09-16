@@ -3,6 +3,7 @@ import type { EstadoPedido, TipoServicio } from "@prisma/client";
 import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MesasService } from "../salon/mesas/mesas.service";
+import { CajaService } from "../caja/caja.service";
 import { assertTransicionValida } from "./estado-pedido";
 
 export interface CreatePedidoInput {
@@ -16,6 +17,7 @@ export class PedidosService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MesasService) private readonly mesasService: MesasService,
+    @Inject(CajaService) private readonly cajaService: CajaService,
   ) {}
 
   async create(input: CreatePedidoInput, tenant: TenantContext) {
@@ -61,8 +63,10 @@ export class PedidosService {
     const pedido = await this.prisma.pedido.findFirst({ where: { id, ...tenant } });
     if (!pedido) throw new NotFoundException(`Pedido ${id} not found`);
     assertTransicionValida(pedido.estado, destino);
+    const turno = destino === "cobrado" ? await this.cajaService.assertTurnoAbierto(tenant) : null;
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.pedido.update({ where: { id }, data: { estado: destino }, include: { items: true } });
+      const data = turno ? { estado: destino, turnoCajaId: turno.id } : { estado: destino };
+      const updated = await tx.pedido.update({ where: { id }, data, include: { items: true } });
       if (destino === "cerrado" && pedido.tipoServicio === "mesa" && pedido.mesaId) await this.mesasService.marcarEstado(tx, pedido.mesaId, "libre");
       return updated;
     });

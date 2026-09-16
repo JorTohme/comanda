@@ -87,10 +87,60 @@ model Pedido {
   sucursalId   String
   organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  turnoCajaId  String?
+  turnoCaja    TurnoCaja?   @relation(fields: [turnoCajaId], references: [id], onDelete: Restrict)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   @@index([orgId, sucursalId])
+}
+
+enum EstadoTurnoCaja {
+  abierto
+  cerrado
+}
+
+enum TipoMovimientoCaja {
+  ingreso
+  egreso
+}
+
+model TurnoCaja {
+  id             String           @id @default(uuid())
+  orgId          String
+  sucursalId     String
+  organizacion   Organizacion     @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sucursal       Sucursal         @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  estado         EstadoTurnoCaja  @default(abierto)
+  montoInicial   Int
+  abiertoPorId   String
+  abiertoPor     Usuario          @relation("TurnoCajaAbiertoPor", fields: [abiertoPorId], references: [id], onDelete: Restrict)
+  abiertoEn      DateTime         @default(now())
+  cerradoPorId   String?
+  cerradoPor     Usuario?         @relation("TurnoCajaCerradoPor", fields: [cerradoPorId], references: [id], onDelete: Restrict)
+  cerradoEn      DateTime?
+  montoDeclarado Int?
+  totalCalculado Int?
+  diferencia     Int?
+  movimientos    MovimientoCaja[]
+  pedidos        Pedido[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([orgId, sucursalId])
+  @@index([orgId, sucursalId, estado])
+}
+
+model MovimientoCaja {
+  id          String             @id @default(uuid())
+  turnoCajaId String
+  turnoCaja   TurnoCaja          @relation(fields: [turnoCajaId], references: [id], onDelete: Cascade)
+  tipo        TipoMovimientoCaja
+  monto       Int
+  descripcion String
+  createdAt   DateTime           @default(now())
+
+  @@index([turnoCajaId])
 }
 
 enum RolUsuario {
@@ -109,6 +159,7 @@ model Organizacion {
   platos     Plato[]
   mesas      Mesa[]
   pedidos    Pedido[]
+  turnosCaja TurnoCaja[]
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 }
@@ -123,6 +174,7 @@ model Sucursal {
   platos         Plato[]
   mesas          Mesa[]
   pedidos        Pedido[]
+  turnosCaja     TurnoCaja[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -139,6 +191,8 @@ model Usuario {
   sucursalId     String
   organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict)
   sucursal       Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  turnosAbiertos TurnoCaja[]  @relation("TurnoCajaAbiertoPor")
+  turnosCerrados TurnoCaja[]  @relation("TurnoCajaCerradoPor")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
