@@ -88,7 +88,7 @@ Mapeado 1:1 al roadmap de doc §8, partido en slices chicos y mergeables — cad
 - [x] **Iter 3 — Pedidos.** Agregado + máquina de estados (`abierto → enviado_a_cocina → en_preparacion → listo → entregado → cobrado → cerrado`, doc §4.3). Carga desde mozo, online-only en esta pasada.
 - [ ] **Iter 4 — Tiempo real.** Gateway Socket.io + Redis pub/sub. Eventos de dominio: `PedidoEnviadoACocina`, `PedidoListo`, `PlatoNoDisponible`, `MesaCerrada` (doc §7.3).
 - [ ] **Iter 5 — Offline-first.** Service Worker + RxDB/IndexedDB + módulo `sync` (pull/push). Es el núcleo distribuido real del proyecto (doc §1) — iteración propia, no se mezcla con Iter 3 porque es lo más difícil de la lista.
-- [ ] **Iter 6 — Caja.** Turnos, cierre básico, arqueo determinístico sobre log append-only (doc §7.5).
+- [x] **Iter 6 — Caja.** Turnos, cierre básico, arqueo determinístico sobre log append-only (doc §7.5). **Adelantada antes que Iter 4/5** — ambas son infraestructura para `apps/operativa`, que todavía no tiene ninguna pantalla propia; Caja es autocontenida y sigue el mismo patrón de módulo ya probado en Catálogo/Salón/Pedidos.
 
 → Cierra MVP (doc §8).
 
