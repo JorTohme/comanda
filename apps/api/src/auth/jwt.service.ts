@@ -29,7 +29,15 @@ function decode(value: string): string {
 
 @Injectable()
 export class JwtService {
-  private readonly secret = process.env.JWT_SECRET ?? "development-only-change-me";
+  private readonly secret = JwtService.readSecret();
+
+  private static readSecret(): string {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error("JWT_SECRET environment variable must be set");
+    }
+    return secret;
+  }
 
   sign(payload: Omit<JwtClaims, "iat" | "exp">): string {
     const now = Math.floor(Date.now() / 1000);

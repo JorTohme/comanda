@@ -30,4 +30,14 @@ describe("JwtService", () => {
     await expect(verifyPassword("correct-horse-battery-staple", first)).resolves.toBe(true);
     await expect(verifyPassword("wrong-password", first)).resolves.toBe(false);
   });
+
+  it("throws when JWT_SECRET is not set", () => {
+    const original = process.env.JWT_SECRET;
+    delete process.env.JWT_SECRET;
+    try {
+      expect(() => new JwtService()).toThrow("JWT_SECRET environment variable must be set");
+    } finally {
+      process.env.JWT_SECRET = original;
+    }
+  });
 });

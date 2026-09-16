@@ -13,7 +13,7 @@ Esta guía explica cómo iniciar el primer tenant y qué no se puede romper cuan
 
 | Tema | Decisión |
 |---|---|
-| Sesión | JWT HS256 de ocho horas en `Authorization: Bearer <token>`. |
+| Sesión | JWT HS256 de ocho horas en `Authorization: Bearer <token>`. `JWT_SECRET` es obligatoria y no tiene valor por defecto: la app no arranca sin definirla. |
 | Contraseñas | `scrypt` nativo con salt aleatorio; no se almacena texto plano. |
 | Tenant | El token contiene `orgId` y `sucursalId`; ambos IDs scopean todas las consultas de negocio. |
 | Rutas públicas | Sólo `GET /health` y `POST /auth/register` / `POST /auth/login`. |
