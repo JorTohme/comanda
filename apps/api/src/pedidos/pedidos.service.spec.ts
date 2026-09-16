@@ -2,6 +2,7 @@ import { Test } from "@nestjs/testing";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import type { EstadoPedido } from "@prisma/client";
 import { PedidosService } from "./pedidos.service";
+import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MesasService } from "../salon/mesas/mesas.service";
 import { SIGUIENTE } from "./estado-pedido";
@@ -16,13 +17,18 @@ const ESTADOS: EstadoPedido[] = [
   "cerrado",
 ];
 
+const TENANT: TenantContext = {
+  orgId: "00000000-0000-0000-0000-000000000011",
+  sucursalId: "00000000-0000-0000-0000-000000000012",
+};
+
 describe("PedidosService", () => {
   let service: PedidosService;
   const prisma = {
     pedido: {
       create: jest.fn(),
       findMany: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
     },
     plato: {
@@ -66,13 +72,14 @@ describe("PedidosService", () => {
       const result = await service.create({
         tipoServicio: "barra",
         items: [{ platoId: "plato-1", cantidad: 2 }],
-      });
+      }, TENANT);
 
       expect(prisma.pedido.create).toHaveBeenCalledWith({
         data: {
           tipoServicio: "barra",
           mesaId: null,
           estado: "abierto",
+          ...TENANT,
           items: {
             create: [{ platoId: "plato-1", nombre: "Milanesa", precioUnitario: 1500, cantidad: 2 }],
           },
@@ -87,14 +94,14 @@ describe("PedidosService", () => {
       prisma.plato.findMany.mockResolvedValue([]);
 
       await expect(
-        service.create({ tipoServicio: "barra", items: [{ platoId: "missing-plato", cantidad: 1 }] }),
+        service.create({ tipoServicio: "barra", items: [{ platoId: "missing-plato", cantidad: 1 }] }, TENANT),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.pedido.create).not.toHaveBeenCalled();
     });
 
     it("rejects tipoServicio=mesa without mesaId", async () => {
       await expect(
-        service.create({ tipoServicio: "mesa", items: [{ platoId: "plato-1", cantidad: 1 }] }),
+        service.create({ tipoServicio: "mesa", items: [{ platoId: "plato-1", cantidad: 1 }] }, TENANT),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.pedido.create).not.toHaveBeenCalled();
     });
@@ -105,7 +112,7 @@ describe("PedidosService", () => {
           tipoServicio: "barra",
           mesaId: "mesa-1",
           items: [{ platoId: "plato-1", cantidad: 1 }],
-        }),
+        }, TENANT),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.pedido.create).not.toHaveBeenCalled();
     });
@@ -118,7 +125,7 @@ describe("PedidosService", () => {
           tipoServicio: "mesa",
           mesaId: "missing-mesa",
           items: [{ platoId: "plato-1", cantidad: 1 }],
-        }),
+        }, TENANT),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.pedido.create).not.toHaveBeenCalled();
     });
@@ -138,10 +145,11 @@ describe("PedidosService", () => {
         tipoServicio: "mesa",
         mesaId: "mesa-1",
         items: [{ platoId: "plato-1", cantidad: 1 }],
-      });
+      }, TENANT);
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(mesas.marcarEstado).toHaveBeenCalledWith(prisma, "mesa-1", "pedido_en_curso");
+      expect(mesas.assertMesaExists).toHaveBeenCalledWith("mesa-1", TENANT);
     });
 
     it("on success with tipoServicio=barra, never calls marcarEstado", async () => {
@@ -154,7 +162,7 @@ describe("PedidosService", () => {
         items: [],
       });
 
-      await service.create({ tipoServicio: "barra", items: [{ platoId: "plato-1", cantidad: 1 }] });
+      await service.create({ tipoServicio: "barra", items: [{ platoId: "plato-1", cantidad: 1 }] }, TENANT);
 
       expect(mesas.marcarEstado).not.toHaveBeenCalled();
     });
@@ -167,7 +175,7 @@ describe("PedidosService", () => {
         const esLegal = SIGUIENTE[actual] === destino;
 
         it(esLegal ? "accepts the legal transition" : "rejects the illegal transition", async () => {
-          prisma.pedido.findUniqueOrThrow.mockResolvedValue({
+          prisma.pedido.findFirst.mockResolvedValue({
             id: "pedido-1",
             estado: actual,
             tipoServicio: "barra",
@@ -177,7 +185,7 @@ describe("PedidosService", () => {
           if (esLegal) {
             prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: destino, items: [] });
 
-            const result = await service.updateEstado("pedido-1", destino);
+            const result = await service.updateEstado("pedido-1", destino, TENANT);
 
             expect(result.estado).toBe(destino);
             expect(prisma.pedido.update).toHaveBeenCalledWith({
@@ -186,7 +194,7 @@ describe("PedidosService", () => {
               include: { items: true },
             });
           } else {
-            await expect(service.updateEstado("pedido-1", destino)).rejects.toBeInstanceOf(
+            await expect(service.updateEstado("pedido-1", destino, TENANT)).rejects.toBeInstanceOf(
               BadRequestException,
             );
             expect(prisma.pedido.update).not.toHaveBeenCalled();
@@ -196,7 +204,7 @@ describe("PedidosService", () => {
     );
 
     it("reaching cerrado on a mesa pedido calls marcarEstado(tx, mesaId, libre)", async () => {
-      prisma.pedido.findUniqueOrThrow.mockResolvedValue({
+      prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
         estado: "cobrado",
         tipoServicio: "mesa",
@@ -204,13 +212,13 @@ describe("PedidosService", () => {
       });
       prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cerrado", items: [] });
 
-      await service.updateEstado("pedido-1", "cerrado");
+      await service.updateEstado("pedido-1", "cerrado", TENANT);
 
       expect(mesas.marcarEstado).toHaveBeenCalledWith(prisma, "mesa-1", "libre");
     });
 
     it("reaching cerrado on a barra pedido does not call marcarEstado", async () => {
-      prisma.pedido.findUniqueOrThrow.mockResolvedValue({
+      prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
         estado: "cobrado",
         tipoServicio: "barra",
@@ -218,15 +226,15 @@ describe("PedidosService", () => {
       });
       prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cerrado", items: [] });
 
-      await service.updateEstado("pedido-1", "cerrado");
+      await service.updateEstado("pedido-1", "cerrado", TENANT);
 
       expect(mesas.marcarEstado).not.toHaveBeenCalled();
     });
 
     it("maps P2025 to NotFoundException on a nonexistent id", async () => {
-      prisma.pedido.findUniqueOrThrow.mockRejectedValue({ code: "P2025" });
+      prisma.pedido.findFirst.mockResolvedValue(null);
 
-      await expect(service.updateEstado("missing-id", "enviado_a_cocina")).rejects.toBeInstanceOf(
+      await expect(service.updateEstado("missing-id", "enviado_a_cocina", TENANT)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
@@ -235,21 +243,21 @@ describe("PedidosService", () => {
   describe("findOne", () => {
     it("returns the Pedido with its items when it exists", async () => {
       const pedido = { id: "pedido-1", estado: "abierto", items: [] };
-      prisma.pedido.findUniqueOrThrow.mockResolvedValue(pedido);
+      prisma.pedido.findFirst.mockResolvedValue(pedido);
 
-      const result = await service.findOne("pedido-1");
+      const result = await service.findOne("pedido-1", TENANT);
 
-      expect(prisma.pedido.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: "pedido-1" },
+      expect(prisma.pedido.findFirst).toHaveBeenCalledWith({
+        where: { id: "pedido-1", ...TENANT },
         include: { items: true },
       });
       expect(result).toEqual(pedido);
     });
 
     it("maps P2025 to NotFoundException on a nonexistent id", async () => {
-      prisma.pedido.findUniqueOrThrow.mockRejectedValue({ code: "P2025" });
+      prisma.pedido.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne("missing-id")).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findOne("missing-id", TENANT)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -258,9 +266,9 @@ describe("PedidosService", () => {
       const all = [{ id: "pedido-1", items: [] }, { id: "pedido-2", items: [] }];
       prisma.pedido.findMany.mockResolvedValue(all);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT);
 
-      expect(prisma.pedido.findMany).toHaveBeenCalledWith({ include: { items: true } });
+      expect(prisma.pedido.findMany).toHaveBeenCalledWith({ where: TENANT, include: { items: true } });
       expect(result).toHaveLength(2);
     });
   });

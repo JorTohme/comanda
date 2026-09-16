@@ -1,44 +1,34 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateCategoriaDto } from "./dto/create-categoria.dto";
 import { UpdateCategoriaDto } from "./dto/update-categoria.dto";
 
-function isNotFoundError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2025";
-}
-
 @Injectable()
 export class CategoriasService {
-  // ponytail: explicit @Inject token — see categorias.controller.ts for why.
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  create(dto: CreateCategoriaDto) {
-    return this.prisma.categoria.create({ data: dto });
+  create(dto: CreateCategoriaDto, tenant: TenantContext) {
+    return this.prisma.categoria.create({ data: { ...dto, ...tenant } });
   }
 
-  findAll() {
-    return this.prisma.categoria.findMany();
+  findAll(tenant: TenantContext) {
+    return this.prisma.categoria.findMany({ where: tenant });
   }
 
-  async update(id: string, dto: UpdateCategoriaDto) {
-    try {
-      return await this.prisma.categoria.update({ where: { id }, data: dto });
-    } catch (error) {
-      if (isNotFoundError(error)) {
-        throw new NotFoundException(`Categoria ${id} not found`);
-      }
-      throw error;
-    }
+  async update(id: string, dto: UpdateCategoriaDto, tenant: TenantContext) {
+    await this.assertExists(id, tenant);
+    return this.prisma.categoria.update({ where: { id }, data: dto });
   }
 
-  async remove(id: string) {
-    try {
-      return await this.prisma.categoria.delete({ where: { id } });
-    } catch (error) {
-      if (isNotFoundError(error)) {
-        throw new NotFoundException(`Categoria ${id} not found`);
-      }
-      throw error;
+  async remove(id: string, tenant: TenantContext) {
+    await this.assertExists(id, tenant);
+    return this.prisma.categoria.delete({ where: { id } });
+  }
+
+  private async assertExists(id: string, tenant: TenantContext) {
+    if (!(await this.prisma.categoria.findFirst({ where: { id, ...tenant }, select: { id: true } }))) {
+      throw new NotFoundException(`Categoria ${id} not found`);
     }
   }
 }

@@ -1,31 +1,20 @@
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post } from "@nestjs/common";
+import { CurrentUser } from "../../auth/current-user.decorator";
+import { TenantContext } from "../../auth/jwt.service";
 import { CategoriasService } from "./categorias.service";
 import { CreateCategoriaDto } from "./dto/create-categoria.dto";
 import { UpdateCategoriaDto } from "./dto/update-categoria.dto";
 
 @Controller("categorias")
 export class CategoriasController {
-  // ponytail: explicit @Inject token — tsx/esbuild's dev runtime doesn't emit
-  // TS decorator metadata, so DI can't fall back to design:paramtypes here.
   constructor(@Inject(CategoriasService) private readonly categoriasService: CategoriasService) {}
 
   @Post()
-  create(@Body() dto: CreateCategoriaDto) {
-    return this.categoriasService.create(dto);
-  }
-
+  create(@Body() dto: CreateCategoriaDto, @CurrentUser() user: TenantContext) { return this.categoriasService.create(dto, user); }
   @Get()
-  findAll() {
-    return this.categoriasService.findAll();
-  }
-
+  findAll(@CurrentUser() user: TenantContext) { return this.categoriasService.findAll(user); }
   @Patch(":id")
-  update(@Param("id") id: string, @Body() dto: UpdateCategoriaDto) {
-    return this.categoriasService.update(id, dto);
-  }
-
+  update(@Param("id") id: string, @Body() dto: UpdateCategoriaDto, @CurrentUser() user: TenantContext) { return this.categoriasService.update(id, dto, user); }
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.categoriasService.remove(id);
-  }
+  remove(@Param("id") id: string, @CurrentUser() user: TenantContext) { return this.categoriasService.remove(id, user); }
 }

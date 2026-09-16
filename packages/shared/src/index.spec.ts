@@ -1,4 +1,4 @@
-import { centavosToPesos, pesosToCentavos } from "./index";
+import { categoriaSchema, centavosToPesos, pesosToCentavos } from "./index";
 
 describe("centavosToPesos", () => {
   it("formats whole pesos with two decimals", () => {
@@ -37,5 +37,18 @@ describe("round-trip", () => {
     for (const centavos of [0, 1, 5, 99, 100, 1550, 999999]) {
       expect(pesosToCentavos(centavosToPesos(centavos))).toBe(centavos);
     }
+  });
+});
+
+describe("runtime contracts", () => {
+  it("rejects a category response that is not tenant-scoped", () => {
+    expect(() =>
+      categoriaSchema.parse({
+        id: "00000000-0000-0000-0000-000000000001",
+        nombre: "Bebidas",
+        createdAt: "2026-09-15T00:00:00.000Z",
+        updatedAt: "2026-09-15T00:00:00.000Z",
+      }),
+    ).toThrow();
   });
 });

@@ -28,3 +28,5 @@ jobs:
       - run: pnpm turbo run lint
 
       - run: pnpm turbo run build
+
+      - run: pnpm turbo run test

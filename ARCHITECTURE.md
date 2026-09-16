@@ -110,3 +110,25 @@ Mapeado 1:1 al roadmap de doc §8, partido en slices chicos y mergeables — cad
 ## 5. Cómo usar esta guía
 
 Cada iteración es un slice chico, mergeado antes de arrancar la siguiente — no se avanza a la próxima con la anterior a medio terminar. Al cerrar una iteración, tildar su checkbox acá mismo, así el archivo queda como fuente de verdad de "dónde estamos" entre sesiones (sin depender de leer todo el historial de git para saber qué falta).
+
+## Autenticación y aislamiento por tenant
+
+La API protege todas las rutas excepto `GET /health` y `POST /auth/*` con el guard global de JWT. El token lleva `sub`, `orgId`, `sucursalId` y `rol`; los controllers pasan ese contexto a los services. Cada listado, búsqueda, actualización, borrado y lookup relacional se scopea por ambos IDs. Por eso, una categoría, mesa o plato ajeno se comporta como inexistente y no puede conectarse a datos locales.
+
+### Bootstrap local
+
+1. Configurá `DATABASE_URL` y un `JWT_SECRET` de alta entropía (el fallback de desarrollo es sólo para trabajo local).
+2. Ejecutá `pnpm --filter api exec prisma migrate dev`.
+3. Creá el primer tenant con `POST /auth/register`:
+   ```json
+   {"organizacionNombre":"Mi local","sucursalNombre":"Centro","nombre":"Admin","email":"admin@example.com","password":"at-least-12-chars","rol":"admin"}
+   ```
+4. La respuesta contiene `accessToken`. El header web inicia sesión por `POST /auth/login`, guarda el token en el almacenamiento local del navegador y el cliente compartido lo adjunta como `Authorization: Bearer ...`.
+
+`admin`, `caja`, `mozo` y `cocina` viajan en el token. La autorización actual establece aislamiento autenticado por tenant; los permisos de cada endpoint no se infieren todavía y deben agregarse con un role guard cuando exista una matriz de roles definida.
+
+### Migración de datos y contratos
+
+La migración de tenancy crea `Organizacion`, `Sucursal` y `Usuario`; primero asigna los registros anteriores a una organización y sucursal iniciales deterministas, y luego vuelve obligatorias las columnas junto con sus foreign keys e índices. El paquete compartido valida el JSON de la API con Zod en el borde del cliente. Usá `ApiOptions` sólo desde clientes no-browser; las llamadas del navegador usan el token de la sesión iniciada.
+
+CI ejecuta lint, build y tests. No elimines la etapa de tests: el scoping por tenant es una frontera de corrección, no un detalle de UI.

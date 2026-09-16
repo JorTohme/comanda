@@ -1,7 +1,13 @@
 import { Test } from "@nestjs/testing";
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { MesasService } from "./mesas.service";
+import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
+
+const TENANT: TenantContext = {
+  orgId: "00000000-0000-0000-0000-000000000011",
+  sucursalId: "00000000-0000-0000-0000-000000000012",
+};
 
 describe("MesasService", () => {
   let service: MesasService;
@@ -9,6 +15,7 @@ describe("MesasService", () => {
     mesa: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -28,10 +35,10 @@ describe("MesasService", () => {
     const created = { id: "mesa-1", nombre: "Mesa 1", capacidad: 4, estado: "libre" };
     prisma.mesa.create.mockResolvedValue(created);
 
-    const result = await service.create({ nombre: "Mesa 1", capacidad: 4 });
+    const result = await service.create({ nombre: "Mesa 1", capacidad: 4 }, TENANT);
 
     expect(prisma.mesa.create).toHaveBeenCalledWith({
-      data: { nombre: "Mesa 1", capacidad: 4, estado: "libre" },
+      data: { nombre: "Mesa 1", capacidad: 4, estado: "libre", ...TENANT },
     });
     expect(result.estado).toBe("libre");
   });
@@ -40,10 +47,10 @@ describe("MesasService", () => {
     const created = { id: "mesa-2", nombre: "Mesa 2", capacidad: 2, estado: "ocupada" };
     prisma.mesa.create.mockResolvedValue(created);
 
-    const result = await service.create({ nombre: "Mesa 2", capacidad: 2, estado: "ocupada" });
+    const result = await service.create({ nombre: "Mesa 2", capacidad: 2, estado: "ocupada" }, TENANT);
 
     expect(prisma.mesa.create).toHaveBeenCalledWith({
-      data: { nombre: "Mesa 2", capacidad: 2, estado: "ocupada" },
+      data: { nombre: "Mesa 2", capacidad: 2, estado: "ocupada", ...TENANT },
     });
     expect(result.estado).toBe("ocupada");
   });
@@ -52,9 +59,9 @@ describe("MesasService", () => {
     const all = [{ id: "mesa-1" }, { id: "mesa-2" }];
     prisma.mesa.findMany.mockResolvedValue(all);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT);
 
-    expect(prisma.mesa.findMany).toHaveBeenCalledWith({});
+    expect(prisma.mesa.findMany).toHaveBeenCalledWith({ where: TENANT });
     expect(result).toHaveLength(2);
   });
 
@@ -62,9 +69,10 @@ describe("MesasService", () => {
     "persists estado=%s on update",
     async (estado) => {
       const updated = { id: "mesa-1", estado };
+      prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
       prisma.mesa.update.mockResolvedValue(updated);
 
-      const result = await service.update("mesa-1", { estado });
+      const result = await service.update("mesa-1", { estado }, TENANT);
 
       expect(prisma.mesa.update).toHaveBeenCalledWith({
         where: { id: "mesa-1" },
@@ -75,46 +83,48 @@ describe("MesasService", () => {
   );
 
   it("throws NotFoundException when updating a nonexistent mesa", async () => {
-    prisma.mesa.update.mockRejectedValue({ code: "P2025" });
+    prisma.mesa.findFirst.mockResolvedValue(null);
 
-    await expect(service.update("missing-id", { estado: "ocupada" })).rejects.toBeInstanceOf(
+    await expect(service.update("missing-id", { estado: "ocupada" }, TENANT)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 
   it("deletes an existing mesa and returns the deleted row", async () => {
     const deleted = { id: "mesa-1" };
+    prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
     prisma.mesa.delete.mockResolvedValue(deleted);
 
-    const result = await service.remove("mesa-1");
+    const result = await service.remove("mesa-1", TENANT);
 
     expect(prisma.mesa.delete).toHaveBeenCalledWith({ where: { id: "mesa-1" } });
     expect(result).toEqual(deleted);
   });
 
   it("throws NotFoundException when deleting a nonexistent mesa", async () => {
-    prisma.mesa.delete.mockRejectedValue({ code: "P2025" });
+    prisma.mesa.findFirst.mockResolvedValue(null);
 
-    await expect(service.remove("missing-id")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.remove("missing-id", TENANT)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("throws ConflictException when deleting a mesa referenced by an existing Pedido", async () => {
     prisma.mesa.delete.mockRejectedValue({ code: "P2003" });
+    prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
 
-    await expect(service.remove("mesa-1")).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.remove("mesa-1", TENANT)).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("assertMesaExists resolves silently when the mesa exists", async () => {
-    prisma.mesa.findUnique.mockResolvedValue({ id: "mesa-1" });
+    prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
 
-    await expect(service.assertMesaExists("mesa-1")).resolves.toBeUndefined();
-    expect(prisma.mesa.findUnique).toHaveBeenCalledWith({ where: { id: "mesa-1" } });
+    await expect(service.assertMesaExists("mesa-1", TENANT)).resolves.toBeUndefined();
+    expect(prisma.mesa.findFirst).toHaveBeenCalledWith({ where: { id: "mesa-1", ...TENANT }, select: { id: true } });
   });
 
   it("assertMesaExists throws BadRequestException when no mesa matches", async () => {
-    prisma.mesa.findUnique.mockResolvedValue(null);
+    prisma.mesa.findFirst.mockResolvedValue(null);
 
-    await expect(service.assertMesaExists("missing-mesa")).rejects.toBeInstanceOf(
+    await expect(service.assertMesaExists("missing-mesa", TENANT)).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });

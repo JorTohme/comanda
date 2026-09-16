@@ -135,7 +135,7 @@ _Satisfies: pedidos-admin spec — all 4 requirements (Create Pedido with items,
 - [x] 7.2 `prisma migrate dev` — confirm `Pedido`/`ItemPedido` + both enums exist with nullable `org_id`/`sucursal_id` columns, `Categoria`/`Plato`/`Mesa` untouched
 - [x] 7.3 `pnpm --filter api test` — full suite green, regression check across `catalogo`, `salon`, `pedidos`
 - [x] 7.4 `pnpm --filter api dev` + curl smoke tests: `POST /pedidos` (mesa + barra, valid + invalid → 400), `GET /pedidos`, `PATCH /pedidos/:id/estado` (legal transitions through to `cerrado`, illegal skip/reverse → 400, nonexistent id → 404); confirm `DELETE /platos/:id` and `DELETE /mesas/:id` on a referenced row now return 409 instead of 500
-- [ ] 7.5 `pnpm dev` (web) — load `/pedidos`: create a mesa pedido, confirm `/salon` shows that Mesa amber (`pedido_en_curso`) without a direct `PATCH /mesas/:id` call; advance the pedido through every state to `cerrado`, confirm the Mesa returns to `libre`; confirm the manual `PATCH /mesas/:id` card-click cycle from Iter 2 still works
-- [ ] 7.6 `pnpm build` — confirm strict mode passes across the monorepo, `/pedidos` route compiles
+- [x] 7.5 `pnpm dev` (web) — load `/pedidos`: create a mesa pedido, confirm `/salon` shows that Mesa amber (`pedido_en_curso`) without a direct `PATCH /mesas/:id` call; advance the pedido through every state to `cerrado`, confirm the Mesa returns to `libre`; confirm the manual `PATCH /mesas/:id` card-click cycle from Iter 2 still works
+- [x] 7.6 `pnpm build` — confirm strict mode passes across the monorepo, `/pedidos` route compiles
 
 _Satisfies: proposal.md Success Criteria (all checkboxes); salon spec (MODIFIED) scenarios "Creating a mesa Pedido automatically sets pedido_en_curso", "Closing the linked Pedido automatically frees the Mesa", "Manual path still works after Pedido exists"._
