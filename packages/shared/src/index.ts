@@ -158,6 +158,23 @@ export async function cerrarTurno(baseUrl: string, id: string, input: CerrarTurn
 const preferenciaPagoSchema = z.object({ initPoint: z.string(), preferenceId: z.string() });
 export async function crearPreferenciaPago(baseUrl: string, pedidoId: string, options?: ApiOptions): Promise<{ initPoint: string; preferenceId: string }> { const url = `${baseUrl}/pagos/preferencia`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify({ pedidoId }) }), preferenciaPagoSchema, "POST", url); }
 
+export const ventaDiariaSchema = z.object({ fecha: z.string(), total: z.number().int() });
+export type VentaDiaria = z.infer<typeof ventaDiariaSchema>;
+export const platoRankingSchema = z.object({ platoId: z.string().uuid(), nombre: z.string(), cantidad: z.number().int() });
+export type PlatoRanking = z.infer<typeof platoRankingSchema>;
+export const horaPicoSchema = z.object({ hora: z.number().int(), pedidos: z.number().int() });
+export type HoraPico = z.infer<typeof horaPicoSchema>;
+export const reportesSchema = z.object({
+  ventasPorDia: z.array(ventaDiariaSchema),
+  platosMasPedidos: z.array(platoRankingSchema),
+  horasPico: z.array(horaPicoSchema),
+});
+export type Reportes = z.infer<typeof reportesSchema>;
+export async function obtenerReportes(baseUrl: string, desde: string, hasta: string, options?: ApiOptions): Promise<Reportes> {
+  const url = `${baseUrl}/reportes?desde=${desde}&hasta=${hasta}`;
+  return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), reportesSchema, "GET", url);
+}
+
 export const rolUsuarioSchema = z.enum(["admin", "caja", "mozo", "cocina"]);
 export type RolUsuario = z.infer<typeof rolUsuarioSchema>;
 export const authSessionSchema = z.object({
