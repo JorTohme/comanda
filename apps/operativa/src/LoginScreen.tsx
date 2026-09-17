@@ -24,51 +24,45 @@ export function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => vo
   }
 
   return (
-    <main
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          width: "20rem",
-          padding: "2rem",
-          border: "1px solid #ccc",
-          borderRadius: "0.5rem",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: "1.25rem" }}>Comanda — Operativa</h1>
-        <label>
-          Email
+    <main className="login-pantalla">
+      <div className="login-marca">
+        <div className="login-circulo">CO</div>
+        <h1>Comanda</h1>
+        <p className="text-muted">Consola operativa — Mozo y Cocina</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="login-form">
+        <div className="field">
+          <label htmlFor="login-email">Email</label>
           <input
+            id="login-email"
+            className="input"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             required
-            style={{ width: "100%" }}
           />
-        </label>
-        <label>
-          Contraseña
+        </div>
+        <div className="field">
+          <label htmlFor="login-password">Contraseña</label>
           <input
+            id="login-password"
+            className="input"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
-            style={{ width: "100%" }}
           />
-        </label>
+        </div>
+
         <ErrorBanner message={error} />
-        <button type="submit" disabled={cargando}>
-          {cargando ? "Ingresando..." : "Ingresar"}
+
+        <button type="submit" className="btn btn-primary btn-block" disabled={cargando}>
+          {cargando ? "Ingresando..." : "Entrar"}
         </button>
+        <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>
+          Tu rol lo define la cuenta. Si sos cocina, entrás directo al tablero.
+        </p>
       </form>
     </main>
   );

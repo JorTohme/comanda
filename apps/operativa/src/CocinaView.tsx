@@ -1,41 +1,51 @@
 import { useEffect, useState } from "react";
-import { avanzarEstadoPedido, listPedidos, listPlatos, updatePlato, type AuthSession, type Pedido, type Plato } from "@comanda/shared";
+import { avanzarEstadoPedido, connectRealtime, listPedidos, listPlatos, updatePlato, type AuthSession, type Pedido, type Plato } from "@comanda/shared";
 import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
+import { getDb } from "./db/schema";
+import { useRxData } from "./db/useRxData";
 
 export function CocinaView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [platos, setPlatos] = useState<Plato[]>([]);
+  const pedidos = useRxData<Pedido>("pedidos");
+  const platos = useRxData<Plato>("platos");
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
   function cargarDatos() {
     return Promise.all([listPedidos(API_URL), listPlatos(API_URL)])
-      .then(([pedidosRes, platosRes]) => {
-        setPedidos(pedidosRes);
-        setPlatos(platosRes);
+      .then(async ([pedidosRes, platosRes]) => {
+        const db = await getDb();
+        await Promise.all([
+          ...pedidosRes.map((pedido) => db.collections.pedidos.upsert(pedido)),
+          ...platosRes.map((plato) => db.collections.platos.upsert(plato)),
+        ]);
       })
       .catch((err: unknown) => setError(mensajeDeError(err)));
   }
 
   useEffect(() => {
     cargarDatos().finally(() => setCargando(false));
-    // ponytail: polling until Iter 4 wires Socket.io (PedidoEnviadoACocina/PedidoListo/etc.) — swap this interval for a socket subscription then, keep this fetch as the initial load.
-    const interval = setInterval(cargarDatos, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
-  function recargarPedidos() {
-    listPedidos(API_URL)
-      .then(setPedidos)
-      .catch((err: unknown) => setError(mensajeDeError(err)));
-  }
+    const socket = connectRealtime(API_URL, session.accessToken);
+    socket.on("pedido.actualizado", async (pedido: Pedido) => {
+      const db = await getDb();
+      await db.collections.pedidos.upsert(pedido);
+    });
+    socket.on("plato.actualizado", async (plato: Plato) => {
+      const db = await getDb();
+      await db.collections.platos.upsert(plato);
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   async function handleAvanzar(pedidoId: string, estado: "en_preparacion" | "listo") {
     setError(null);
     try {
-      await avanzarEstadoPedido(API_URL, pedidoId, estado);
-      recargarPedidos();
+      const actualizado = await avanzarEstadoPedido(API_URL, pedidoId, estado);
+      const db = await getDb();
+      await db.collections.pedidos.upsert(actualizado);
     } catch (err) {
       setError(mensajeDeError(err));
     }
@@ -43,12 +53,13 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
 
   async function handleToggleDisponible(plato: Plato) {
     setError(null);
-    const anterior = plato.disponible;
-    setPlatos(platos.map((p) => (p.id === plato.id ? { ...p, disponible: !anterior } : p)));
+    const db = await getDb();
+    await db.collections.platos.upsert({ ...plato, disponible: !plato.disponible });
     try {
-      await updatePlato(API_URL, plato.id, { disponible: !anterior });
+      const actualizado = await updatePlato(API_URL, plato.id, { disponible: !plato.disponible });
+      await db.collections.platos.upsert(actualizado);
     } catch (err) {
-      setPlatos((current) => current.map((p) => (p.id === plato.id ? { ...p, disponible: anterior } : p)));
+      await db.collections.platos.upsert(plato);
       setError(mensajeDeError(err));
     }
   }
@@ -58,72 +69,86 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
   const listos = pedidos.filter((p) => p.estado === "listo");
 
   return (
-    <div>
-      <header>
-        <span>Hola, {session.user.nombre}</span>
-        <button type="button" onClick={onLogout}>
-          Cerrar sesión
-        </button>
+    <div className="pantalla kds-pantalla">
+      <header className="kds-barra-superior">
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <h1>Cocina</h1>
+          <span className="tag" style={{ background: "var(--color-accent)", color: "var(--color-bg)" }}>
+            {pedidos.filter((p) => p.estado !== "entregado" && p.estado !== "cerrado" && p.estado !== "cobrado").length} EN CURSO
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span className="text-muted">Hola, {session.user.nombre}</span>
+          <button type="button" className="btn btn-ghost" onClick={onLogout}>
+            Cerrar sesión
+          </button>
+        </div>
       </header>
 
       <ErrorBanner message={error} />
 
       {cargando ? (
-        <p>Cargando...</p>
+        <p className="text-muted">Cargando...</p>
       ) : (
         <>
-          <section>
-            <h2>Nuevos</h2>
-            <ul>
+          <div className="kds-tablero">
+            <div>
+              <div className="kds-columna-titulo">
+                <span className="kds-contador" style={{ background: "var(--state-cocina)" }}>{nuevos.length}</span>
+                Nuevos
+              </div>
               {nuevos.map((pedido) => (
-                <li key={pedido.id}>
+                <div key={pedido.id} className="ticket col-nuevos">
                   <PedidoResumen pedido={pedido} />
-                  <button type="button" onClick={() => handleAvanzar(pedido.id, "en_preparacion")}>
+                  <button type="button" className="btn btn-block" style={{ background: "var(--state-cocina)", color: "var(--state-cocina-ink)", marginTop: 8 }} onClick={() => handleAvanzar(pedido.id, "en_preparacion")}>
                     Empezar
                   </button>
-                </li>
+                </div>
               ))}
-            </ul>
-          </section>
+            </div>
 
-          <section>
-            <h2>En preparación</h2>
-            <ul>
+            <div>
+              <div className="kds-columna-titulo">
+                <span className="kds-contador" style={{ background: "var(--state-prep)" }}>{enPreparacion.length}</span>
+                En preparación
+              </div>
               {enPreparacion.map((pedido) => (
-                <li key={pedido.id}>
+                <div key={pedido.id} className="ticket col-preparacion">
                   <PedidoResumen pedido={pedido} />
-                  <button type="button" onClick={() => handleAvanzar(pedido.id, "listo")}>
-                    Listo
+                  <button type="button" className="btn btn-sage btn-block" style={{ marginTop: 8 }} onClick={() => handleAvanzar(pedido.id, "listo")}>
+                    Marcar listo
                   </button>
-                </li>
+                </div>
               ))}
-            </ul>
-          </section>
+            </div>
 
-          <section>
-            <h2>Listos (esperando retiro)</h2>
-            <ul>
+            <div>
+              <div className="kds-columna-titulo">
+                <span className="kds-contador" style={{ background: "var(--state-listo)" }}>{listos.length}</span>
+                Listos · esperando retiro
+              </div>
               {listos.map((pedido) => (
-                <li key={pedido.id}>
+                <div key={pedido.id} className="ticket col-listos">
                   <PedidoResumen pedido={pedido} />
-                </li>
+                </div>
               ))}
-            </ul>
-          </section>
+            </div>
+          </div>
 
-          <section>
-            <h2>Disponibilidad de platos</h2>
-            <ul>
-              {platos.map((plato) => (
-                <li key={plato.id}>
-                  <label>
-                    <input type="checkbox" checked={plato.disponible} onChange={() => handleToggleDisponible(plato)} />
-                    {plato.nombre}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <div className="panel-disponibilidad">
+            <div className="titulo-seccion">Disponibilidad de platos</div>
+            {platos.map((plato) => (
+              <button
+                key={plato.id}
+                type="button"
+                className={`toggle-plato ${plato.disponible ? "" : "off"}`}
+                onClick={() => handleToggleDisponible(plato)}
+              >
+                <span className={`switch ${plato.disponible ? "on" : ""}`} />
+                {plato.nombre}
+              </button>
+            ))}
+          </div>
         </>
       )}
     </div>
@@ -133,11 +158,13 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
 function PedidoResumen({ pedido }: { pedido: Pedido }) {
   return (
     <div>
-      <span>{pedido.tipoServicio === "mesa" ? `Mesa` : "Barra"}</span>
-      <ul>
+      <div className="fila-superior">
+        <span className="mesa-nombre">{pedido.tipoServicio === "mesa" ? "Mesa" : "Barra"}</span>
+      </div>
+      <ul className="items">
         {pedido.items.map((item) => (
           <li key={item.id}>
-            {item.nombre} × {item.cantidad}
+            <span className="cant">{item.cantidad}×</span> {item.nombre}
           </li>
         ))}
       </ul>

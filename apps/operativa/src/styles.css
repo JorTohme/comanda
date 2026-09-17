@@ -1,0 +1,280 @@
+/* Organic — apps/operativa design tokens and component classes. Fuente de verdad: DESIGN.md */
+@import url('https://fonts.googleapis.com/css2?family=Caprasimo:wght@400&family=Figtree:wght@400;600;700;800;900&display=swap');
+
+:root {
+  --color-bg: #f5ead8;
+  --color-surface: #ebddc5;
+  --color-text: #201e1d;
+  --color-accent: #c67139;
+  --color-accent-2: #7a8a5e;
+  --color-divider: color-mix(in srgb, #201e1d 16%, transparent);
+
+  --color-neutral-100: #f9f4ed;
+  --color-neutral-200: #eee7db;
+  --color-neutral-300: #dcd3c4;
+  --color-neutral-400: #c0b6a5;
+  --color-neutral-500: #a19786;
+  --color-neutral-600: #82796a;
+  --color-neutral-700: #645c50;
+  --color-neutral-800: #474238;
+  --color-neutral-900: #2e2b25;
+
+  --color-accent-100: #fff2eb;
+  --color-accent-200: #ffe1d0;
+  --color-accent-300: #ffc6a5;
+  --color-accent-400: #f6a06b;
+  --color-accent-500: #d67f48;
+  --color-accent-600: #b2622d;
+  --color-accent-700: #8c491a;
+  --color-accent-800: #643312;
+  --color-accent-900: #402310;
+
+  --color-accent-2-100: #f0fae1;
+  --color-accent-2-200: #e1eecc;
+  --color-accent-2-300: #ccdbb2;
+  --color-accent-2-400: #aebf92;
+  --color-accent-2-500: #8fa073;
+  --color-accent-2-600: #728157;
+  --color-accent-2-700: #56633f;
+  --color-accent-2-800: #3d472b;
+  --color-accent-2-900: #272e1b;
+
+  /* Estados de pedido — DESIGN.md "Tabla de estados" */
+  --state-abierto: var(--color-neutral-500);
+  --state-cocina: #c9951a;
+  --state-cocina-ink: #2e2201;
+  --state-cocina-tint: #f7e9c4;
+  --state-cocina-ink-alt: #6d4f06;
+  --state-prep: var(--color-accent);
+  --state-listo: var(--color-accent-2-600);
+  --state-entregado: var(--color-neutral-400);
+  --state-alerta: #b1402f;
+
+  --font-heading: "Caprasimo", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, sans-serif;
+
+  --space-1: 4.4px;
+  --space-2: 8.8px;
+  --space-3: 13.2px;
+  --space-4: 17.6px;
+  --space-6: 26.4px;
+  --space-8: 35.2px;
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 28px;
+
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2e2b25 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2e2b25 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2e2b25 22%, transparent);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0 0 var(--space-2);
+}
+p { margin: 0 0 var(--space-2); }
+ul { list-style: none; margin: 0; padding: 0; }
+input, select, button { font-family: inherit; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+.text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+/* — botones — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; border: 1px solid transparent; border-radius: 999px;
+  font-family: var(--font-heading); font-weight: 400; font-size: 16px;
+  padding: 12px 22px; color: var(--color-text); background: transparent;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); color: var(--color-bg); box-shadow: var(--shadow-md); }
+.btn-primary:hover { background: var(--color-accent-600); }
+.btn-primary:active { background: var(--color-accent-700); }
+.btn-secondary { border-color: var(--color-divider); background: var(--color-neutral-100); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-ghost { color: var(--color-accent); background: transparent; padding-inline: var(--space-2); }
+.btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-sage { background: var(--color-accent-2-600); color: #fff; }
+.btn-block { width: 100%; }
+
+/* — campos — */
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > label {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--color-neutral-700);
+}
+.input, select.input {
+  width: 100%; min-height: 44px; padding: 10px 16px; font: inherit;
+  font-size: 16px; color: var(--color-text); background: var(--color-neutral-100);
+  border: 2px solid var(--color-neutral-300); border-radius: 999px;
+}
+.input:focus-visible { border-color: var(--color-accent); }
+
+/* — segmented control (tipoServicio) — */
+.seg { display: inline-flex; overflow: hidden; border: 2px solid var(--color-neutral-300); border-radius: 999px; }
+.seg-opt {
+  padding: 9px 16px; font-size: 14px; font-weight: 800; cursor: pointer; background: var(--color-neutral-100); color: var(--color-text);
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-neutral-300); }
+.seg-opt.active { background: var(--color-text); color: var(--color-bg); }
+
+/* — tarjetas — */
+.card { background: var(--color-surface); border-radius: var(--radius-md); padding: var(--space-3); box-shadow: var(--shadow-sm); }
+
+/* — tags / chips — */
+.tag {
+  display: inline-flex; align-items: center; font-size: 12px; font-weight: 800;
+  letter-spacing: 0.02em; padding: 4px 12px; border-radius: 999px;
+}
+
+/* — layout general — */
+.pantalla { max-width: 480px; margin: 0 auto; min-height: 100%; padding: var(--space-4) var(--space-4) calc(var(--space-8) + var(--space-4)); }
+.encabezado { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.encabezado h1 { font-size: 27px; margin: 0; }
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--color-accent-2-600); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 15px; flex: none;
+}
+.seccion { margin-bottom: var(--space-6); }
+.seccion > .titulo-seccion {
+  font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--color-neutral-700); margin-bottom: var(--space-2);
+}
+
+/* — login — */
+.login-pantalla {
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: var(--space-6) 28px; gap: var(--space-4); text-align: center;
+}
+.login-marca { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.login-circulo {
+  width: 64px; height: 64px; border-radius: 50%; background: var(--color-accent); color: var(--color-bg);
+  display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-size: 26px;
+}
+.login-form { width: 100%; display: flex; flex-direction: column; gap: var(--space-3); text-align: left; }
+
+/* — mesas (grid por sección) — */
+.grid-mesas { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 7px; }
+.celda-mesa {
+  aspect-ratio: 1; border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; cursor: pointer; border: 2px solid transparent; padding: 4px; text-align: center;
+}
+.celda-mesa .numero { font-family: var(--font-heading); font-size: 20px; line-height: 1; }
+.celda-mesa .subtitulo { font-size: 10px; font-weight: 800; }
+.celda-mesa.libre { background: var(--color-neutral-100); border: 2px dashed var(--color-neutral-400); color: var(--color-neutral-600); }
+.celda-mesa.ocupada { background: var(--state-cocina-tint); border-color: var(--state-cocina); color: var(--state-cocina-ink-alt); }
+.celda-mesa.pedido_en_curso { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg); }
+
+/* — plano 2D del salón (solo lectura en operativa) — */
+.plano-salon { position: relative; width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius-md); background: var(--color-neutral-100); border: 1px solid var(--color-divider); }
+.mesa-plano {
+  position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; border: 2px solid transparent; border-radius: var(--radius-sm); padding: 4px; text-align: center;
+}
+.mesa-plano.circle { border-radius: 50%; }
+.mesa-plano .numero { font-family: var(--font-heading); font-size: 16px; line-height: 1; }
+.mesa-plano .subtitulo { font-size: 9px; font-weight: 800; }
+.mesa-plano.libre { background: var(--color-neutral-100); border: 2px dashed var(--color-neutral-400); color: var(--color-neutral-600); }
+.mesa-plano.ocupada { background: var(--state-cocina-tint); border-color: var(--state-cocina); color: var(--state-cocina-ink-alt); }
+.mesa-plano.pedido_en_curso { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg); }
+
+/* — filas de plato (nuevo pedido) — */
+.fila-plato {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  background: var(--color-neutral-100); border: 2px solid transparent; border-radius: var(--radius-md);
+  padding: 12px 14px; margin-bottom: 7px;
+}
+.fila-plato.con-cantidad { background: var(--color-accent-100); border-color: var(--color-accent); }
+.fila-plato .nombre { font-size: 16px; font-weight: 800; }
+.fila-plato .precio { font-size: 13px; color: var(--color-neutral-700); }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper button {
+  width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--color-neutral-400);
+  background: var(--color-neutral-100); cursor: pointer; font-size: 16px; line-height: 1;
+}
+.stepper button.mas { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent); }
+.stepper .cantidad { font-family: var(--font-heading); font-size: 18px; min-width: 20px; text-align: center; }
+
+/* — tarjeta de pedido (mis pedidos / KDS) — */
+.tarjeta-pedido {
+  background: var(--color-neutral-100); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  border-left: 8px solid var(--color-neutral-400); padding: 12px 15px; margin-bottom: var(--space-3);
+}
+.tarjeta-pedido.estado-abierto { border-color: var(--state-abierto); }
+.tarjeta-pedido.estado-enviado_a_cocina { border-color: var(--state-cocina); }
+.tarjeta-pedido.estado-en_preparacion { border-color: var(--state-prep); }
+.tarjeta-pedido.estado-listo { border-color: var(--state-listo); }
+.tarjeta-pedido.estado-entregado { border-color: var(--state-entregado); opacity: 0.65; }
+.tarjeta-pedido .fila-superior { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.tarjeta-pedido .titulo { font-family: var(--font-heading); font-size: 20px; }
+.tarjeta-pedido .items { font-size: 14px; color: var(--color-neutral-700); margin-bottom: var(--space-2); }
+
+.chip-estado { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; }
+.chip-estado.estado-abierto { background: var(--color-neutral-200); color: var(--color-neutral-700); }
+.chip-estado.estado-enviado_a_cocina { background: var(--state-cocina-tint); color: var(--state-cocina-ink-alt); }
+.chip-estado.estado-en_preparacion { background: var(--color-accent-100); color: var(--color-accent-800); }
+.chip-estado.estado-listo { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
+.chip-estado.estado-entregado { background: var(--color-neutral-200); color: var(--color-neutral-600); }
+
+/* — KDS (cocina, fondo claro) — */
+.kds-pantalla { padding: var(--space-4) var(--space-6); max-width: none; }
+.kds-barra-superior { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
+.kds-barra-superior h1 { font-size: 24px; margin: 0; }
+.kds-tablero { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); align-items: start; }
+.kds-columna-titulo {
+  display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 900; letter-spacing: 0.06em;
+  text-transform: uppercase; margin-bottom: var(--space-2);
+}
+.kds-contador {
+  width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-heading); font-size: 13px; color: #fff;
+}
+.ticket {
+  background: var(--color-neutral-100); border-radius: var(--radius-md); border-top: 8px solid var(--color-neutral-400);
+  padding: 10px 14px; margin-bottom: var(--space-2); box-shadow: var(--shadow-sm);
+}
+.ticket.col-nuevos { border-top-color: var(--state-cocina); background: var(--state-cocina-tint); }
+.ticket.col-preparacion { border-top-color: var(--state-prep); background: var(--color-accent-100); }
+.ticket.col-listos { border-top-color: var(--state-listo); background: var(--color-accent-2-200); }
+.ticket .fila-superior { display: flex; align-items: baseline; justify-content: space-between; }
+.ticket .mesa-nombre { font-family: var(--font-heading); font-size: 22px; }
+.ticket .items { font-size: 16px; font-weight: 800; line-height: 1.2; margin: 8px 0; }
+.ticket .items li { display: flex; gap: 8px; }
+.ticket .items .cant { min-width: 30px; color: var(--color-accent-700); }
+
+.panel-disponibilidad { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 2px solid var(--color-divider); }
+.toggle-plato {
+  display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 999px;
+  background: var(--color-neutral-100); font-size: 14px; font-weight: 800; margin: 0 var(--space-2) var(--space-2) 0;
+}
+.toggle-plato.off { opacity: 0.5; }
+.switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--color-neutral-400); flex: none; cursor: pointer; border: none; padding: 0; }
+.switch.on { background: var(--color-accent-2-600); }
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 120ms ease-out;
+}
+.switch.on::after { left: 20px; }
+
+/* — barra de envío (nuevo pedido) — */
+.barra-envio {
+  position: sticky; bottom: 0; background: var(--color-neutral-900); color: var(--color-neutral-200);
+  border-radius: var(--radius-lg); padding: 14px 18px; margin-top: var(--space-4); display: flex; flex-direction: column; gap: 10px;
+}
+.barra-envio .resumen { display: flex; align-items: baseline; justify-content: space-between; font-size: 14px; }
+.barra-envio .total { font-family: var(--font-heading); font-size: 20px; color: var(--color-bg); }
