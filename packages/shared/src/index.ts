@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { io, type Socket } from "socket.io-client";
 
 export const healthStatusSchema = z.object({ status: z.enum(["ok", "error"]) });
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
@@ -11,7 +12,22 @@ export const platoSchema = tenantSchema.extend({ id: z.string().uuid(), nombre: 
 export type Plato = z.infer<typeof platoSchema>;
 export const estadoMesaSchema = z.enum(["libre", "ocupada", "pedido_en_curso"]);
 export type EstadoMesa = z.infer<typeof estadoMesaSchema>;
-export const mesaSchema = tenantSchema.extend({ id: z.string().uuid(), nombre: z.string(), capacidad: z.number().int(), estado: estadoMesaSchema, createdAt: timestampSchema, updatedAt: timestampSchema });
+export const formaMesaSchema = z.enum(["rect", "circle"]);
+export type FormaMesa = z.infer<typeof formaMesaSchema>;
+export const mesaSchema = tenantSchema.extend({
+  id: z.string().uuid(),
+  nombre: z.string(),
+  capacidad: z.number().int(),
+  estado: estadoMesaSchema,
+  posX: z.number().nullable().optional(),
+  posY: z.number().nullable().optional(),
+  rotacion: z.number().nullable().optional(),
+  forma: formaMesaSchema.nullable().optional(),
+  ancho: z.number().nullable().optional(),
+  alto: z.number().nullable().optional(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
 export type Mesa = z.infer<typeof mesaSchema>;
 export const tipoServicioSchema = z.enum(["mesa", "barra"]);
 export type TipoServicio = z.infer<typeof tipoServicioSchema>;
@@ -19,7 +35,7 @@ export const estadoPedidoSchema = z.enum(["abierto", "enviado_a_cocina", "en_pre
 export type EstadoPedido = z.infer<typeof estadoPedidoSchema>;
 export const itemPedidoSchema = z.object({ id: z.string().uuid(), pedidoId: z.string().uuid(), platoId: z.string().uuid(), nombre: z.string(), precioUnitario: z.number().int(), cantidad: z.number().int().positive() });
 export type ItemPedido = z.infer<typeof itemPedidoSchema>;
-export const pedidoSchema = tenantSchema.extend({ id: z.string().uuid(), tipoServicio: tipoServicioSchema, mesaId: z.string().uuid().nullable(), estado: estadoPedidoSchema, items: z.array(itemPedidoSchema), createdAt: timestampSchema, updatedAt: timestampSchema });
+export const pedidoSchema = tenantSchema.extend({ id: z.string().uuid(), tipoServicio: tipoServicioSchema, mesaId: z.string().uuid().nullable(), estado: estadoPedidoSchema, items: z.array(itemPedidoSchema), clientRequestId: z.string().nullable().optional(), createdAt: timestampSchema, updatedAt: timestampSchema });
 export type Pedido = z.infer<typeof pedidoSchema>;
 export const estadoTurnoCajaSchema = z.enum(["abierto", "cerrado"]);
 export type EstadoTurnoCaja = z.infer<typeof estadoTurnoCajaSchema>;
@@ -36,9 +52,28 @@ export type CreateCategoriaInput = { nombre: string };
 export type UpdateCategoriaInput = Partial<CreateCategoriaInput>;
 export type CreatePlatoInput = { nombre: string; precio: number; categoriaId: string; disponible?: boolean };
 export type UpdatePlatoInput = Partial<CreatePlatoInput>;
-export type CreateMesaInput = { nombre: string; capacidad: number; estado?: EstadoMesa };
+export type CreateMesaInput = {
+  nombre: string;
+  capacidad: number;
+  estado?: EstadoMesa;
+  posX?: number;
+  posY?: number;
+  rotacion?: number;
+  forma?: FormaMesa;
+  ancho?: number;
+  alto?: number;
+};
 export type UpdateMesaInput = Partial<CreateMesaInput>;
-export type CreatePedidoInput = { tipoServicio: TipoServicio; mesaId?: string; items: { platoId: string; cantidad: number }[] };
+
+export function posicionPorDefecto(index: number): { x: number; y: number } {
+  const columnas = 5;
+  const paso = 100 / columnas;
+  return {
+    x: (index % columnas) * paso + paso / 2,
+    y: Math.floor(index / columnas) * 18 + 12,
+  };
+}
+export type CreatePedidoInput = { tipoServicio: TipoServicio; mesaId?: string; items: { platoId: string; cantidad: number }[]; clientRequestId?: string };
 export type AbrirTurnoInput = { montoInicial: number };
 export type CerrarTurnoInput = { montoDeclarado: number };
 export type CreateMovimientoInput = { tipo: TipoMovimientoCaja; monto: number; descripcion: string };
@@ -75,7 +110,8 @@ function headers(options?: ApiOptions, json = false): Record<string, string> {
 
 async function parseJsonOrThrow<T>(res: Response, schema: z.ZodType<T>, method: string, url: string): Promise<T> {
   if (!res.ok) throw new Error(`Request failed: ${method} ${url} (${res.status})`);
-  return schema.parse(await res.json());
+  const text = await res.text();
+  return schema.parse(text === "" ? null : JSON.parse(text));
 }
 
 async function throwIfNotOk(res: Response, method: string, url: string): Promise<void> {
@@ -119,4 +155,9 @@ export async function login(baseUrl: string, input: { email: string; password: s
 export async function register(baseUrl: string, input: { organizacionNombre: string; sucursalNombre: string; nombre: string; email: string; password: string; rol?: RolUsuario }): Promise<AuthSession> {
   const url = `${baseUrl}/auth/register`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
+}
+
+export type { Socket };
+export function connectRealtime(baseUrl: string, accessToken: string): Socket {
+  return io(baseUrl, { auth: { token: accessToken }, transports: ["websocket"] });
 }

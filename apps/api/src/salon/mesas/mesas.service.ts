@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import type { EstadoMesa, Prisma } from "@prisma/client";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { CreateMesaDto } from "./dto/create-mesa.dto";
 import { UpdateMesaDto } from "./dto/update-mesa.dto";
 
@@ -11,10 +12,15 @@ function isForeignKeyViolationError(error: unknown): boolean {
 
 @Injectable()
 export class MesasService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RealtimeGateway) private readonly realtime: RealtimeGateway,
+  ) {}
 
-  create(dto: CreateMesaDto, tenant: TenantContext) {
-    return this.prisma.mesa.create({ data: { ...dto, estado: dto.estado ?? "libre", ...tenant } });
+  async create(dto: CreateMesaDto, tenant: TenantContext) {
+    const mesa = await this.prisma.mesa.create({ data: { ...dto, estado: dto.estado ?? "libre", ...tenant } });
+    this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", mesa);
+    return mesa;
   }
 
   findAll(tenant: TenantContext) {
@@ -23,7 +29,9 @@ export class MesasService {
 
   async update(id: string, dto: UpdateMesaDto, tenant: TenantContext) {
     await this.assertOwnedMesa(id, tenant);
-    return this.prisma.mesa.update({ where: { id }, data: dto });
+    const mesa = await this.prisma.mesa.update({ where: { id }, data: dto });
+    this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", mesa);
+    return mesa;
   }
 
   async remove(id: string, tenant: TenantContext) {

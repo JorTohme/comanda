@@ -1,4 +1,4 @@
-import { categoriaSchema, centavosToPesos, pesosToCentavos } from "./index";
+import { categoriaSchema, centavosToPesos, pesosToCentavos, posicionPorDefecto } from "./index";
 
 describe("centavosToPesos", () => {
   it("formats whole pesos with two decimals", () => {
@@ -37,6 +37,25 @@ describe("round-trip", () => {
     for (const centavos of [0, 1, 5, 99, 100, 1550, 999999]) {
       expect(pesosToCentavos(centavosToPesos(centavos))).toBe(centavos);
     }
+  });
+});
+
+describe("posicionPorDefecto", () => {
+  it("stays within 0-100 on both axes for the first 20 indices", () => {
+    for (let i = 0; i < 20; i++) {
+      const { x, y } = posicionPorDefecto(i);
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(100);
+      expect(y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("gives different positions for consecutive indices", () => {
+    expect(posicionPorDefecto(0)).not.toEqual(posicionPorDefecto(1));
+  });
+
+  it("is deterministic for the same index", () => {
+    expect(posicionPorDefecto(3)).toEqual(posicionPorDefecto(3));
   });
 });
 

@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from "@nest
 import { PlatosService } from "./platos.service";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
@@ -23,11 +24,18 @@ describe("PlatosService", () => {
       findFirst: jest.fn(),
     },
   };
+  const realtime = {
+    emitToSucursal: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
-      providers: [PlatosService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        PlatosService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RealtimeGateway, useValue: realtime },
+      ],
     }).compile();
 
     service = moduleRef.get(PlatosService);
@@ -93,6 +101,7 @@ describe("PlatosService", () => {
       data: { disponible: false },
     });
     expect(result.disponible).toBe(false);
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "plato.actualizado", updated);
   });
 
   it("throws NotFoundException when updating a nonexistent plato", async () => {

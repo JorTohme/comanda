@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from "@nest
 import { MesasService } from "./mesas.service";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
@@ -21,11 +22,18 @@ describe("MesasService", () => {
       delete: jest.fn(),
     },
   };
+  const realtime = {
+    emitToSucursal: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
-      providers: [MesasService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        MesasService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RealtimeGateway, useValue: realtime },
+      ],
     }).compile();
 
     service = moduleRef.get(MesasService);
@@ -41,6 +49,7 @@ describe("MesasService", () => {
       data: { nombre: "Mesa 1", capacidad: 4, estado: "libre", ...TENANT },
     });
     expect(result.estado).toBe("libre");
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", created);
   });
 
   it("creates a mesa honoring an explicit estado", async () => {
@@ -65,6 +74,24 @@ describe("MesasService", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("persists spatial fields (posX, posY, rotacion, forma, ancho, alto) when passed to update", async () => {
+    const updated = { id: "mesa-1", posX: 40, posY: 12, rotacion: 90, forma: "circle", ancho: 90, alto: 90 };
+    prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
+    prisma.mesa.update.mockResolvedValue(updated);
+
+    const result = await service.update(
+      "mesa-1",
+      { posX: 40, posY: 12, rotacion: 90, forma: "circle", ancho: 90, alto: 90 },
+      TENANT,
+    );
+
+    expect(prisma.mesa.update).toHaveBeenCalledWith({
+      where: { id: "mesa-1" },
+      data: { posX: 40, posY: 12, rotacion: 90, forma: "circle", ancho: 90, alto: 90 },
+    });
+    expect(result).toEqual(updated);
+  });
+
   it.each(["libre", "ocupada", "pedido_en_curso"] as const)(
     "persists estado=%s on update",
     async (estado) => {
@@ -79,6 +106,7 @@ describe("MesasService", () => {
         data: { estado },
       });
       expect(result.estado).toBe(estado);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", updated);
     },
   );
 

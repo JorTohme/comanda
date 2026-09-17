@@ -6,6 +6,7 @@ import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MesasService } from "../salon/mesas/mesas.service";
 import { CajaService } from "../caja/caja.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { SIGUIENTE } from "./estado-pedido";
 
 const ESTADOS: EstadoPedido[] = [
@@ -44,6 +45,9 @@ describe("PedidosService", () => {
   const caja = {
     assertTurnoAbierto: jest.fn(),
   };
+  const realtime = {
+    emitToSucursal: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -56,6 +60,7 @@ describe("PedidosService", () => {
         { provide: PrismaService, useValue: prisma },
         { provide: MesasService, useValue: mesas },
         { provide: CajaService, useValue: caja },
+        { provide: RealtimeGateway, useValue: realtime },
       ],
     }).compile();
 
@@ -63,6 +68,67 @@ describe("PedidosService", () => {
   });
 
   describe("create", () => {
+    it("returns the existing pedido when clientRequestId already exists, without creating a duplicate", async () => {
+      const existente = {
+        id: "pedido-existente",
+        tipoServicio: "barra",
+        mesaId: null,
+        estado: "abierto",
+        clientRequestId: "req-1",
+        items: [],
+      };
+      prisma.pedido.findFirst.mockResolvedValue(existente);
+
+      const result = await service.create({
+        tipoServicio: "barra",
+        clientRequestId: "req-1",
+        items: [{ platoId: "plato-1", cantidad: 1 }],
+      }, TENANT);
+
+      expect(prisma.pedido.findFirst).toHaveBeenCalledWith({
+        where: { clientRequestId: "req-1", ...TENANT },
+        include: { items: true },
+      });
+      expect(result).toEqual(existente);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+      expect(mesas.marcarEstado).not.toHaveBeenCalled();
+      expect(realtime.emitToSucursal).not.toHaveBeenCalled();
+      expect(prisma.plato.findMany).not.toHaveBeenCalled();
+    });
+
+    it("creates normally when clientRequestId is new", async () => {
+      prisma.pedido.findFirst.mockResolvedValue(null);
+      prisma.plato.findMany.mockResolvedValue([{ id: "plato-1", nombre: "Milanesa", precio: 1500 }]);
+      const pedidoCreado = {
+        id: "pedido-1",
+        tipoServicio: "barra",
+        mesaId: null,
+        estado: "abierto",
+        clientRequestId: "req-2",
+        items: [],
+      };
+      prisma.pedido.create.mockResolvedValue(pedidoCreado);
+
+      const result = await service.create({
+        tipoServicio: "barra",
+        clientRequestId: "req-2",
+        items: [{ platoId: "plato-1", cantidad: 1 }],
+      }, TENANT);
+
+      expect(prisma.pedido.create).toHaveBeenCalledWith({
+        data: {
+          tipoServicio: "barra",
+          mesaId: null,
+          estado: "abierto",
+          clientRequestId: "req-2",
+          ...TENANT,
+          items: { create: [{ platoId: "plato-1", nombre: "Milanesa", precioUnitario: 1500, cantidad: 1 }] },
+        },
+        include: { items: true },
+      });
+      expect(result).toEqual(pedidoCreado);
+    });
+
     it("snapshots nombre and precioUnitario from Plato at creation, not a live read", async () => {
       prisma.plato.findMany.mockResolvedValue([
         { id: "plato-1", nombre: "Milanesa", precio: 1500 },
@@ -172,6 +238,49 @@ describe("PedidosService", () => {
 
       expect(mesas.marcarEstado).not.toHaveBeenCalled();
     });
+
+    it("on success with tipoServicio=mesa, emits pedido.actualizado and mesa.actualizada", async () => {
+      mesas.assertMesaExists.mockResolvedValue(undefined);
+      mesas.marcarEstado.mockResolvedValue({ id: "mesa-1", estado: "pedido_en_curso" });
+      prisma.plato.findMany.mockResolvedValue([{ id: "plato-1", nombre: "Milanesa", precio: 1500 }]);
+      const pedidoCreado = {
+        id: "pedido-1",
+        tipoServicio: "mesa",
+        mesaId: "mesa-1",
+        estado: "abierto",
+        items: [],
+      };
+      prisma.pedido.create.mockResolvedValue(pedidoCreado);
+
+      await service.create({
+        tipoServicio: "mesa",
+        mesaId: "mesa-1",
+        items: [{ platoId: "plato-1", cantidad: 1 }],
+      }, TENANT);
+
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "pedido.actualizado", pedidoCreado);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", {
+        id: "mesa-1",
+        estado: "pedido_en_curso",
+      });
+    });
+
+    it("on success with tipoServicio=barra, emits only pedido.actualizado", async () => {
+      prisma.plato.findMany.mockResolvedValue([{ id: "plato-1", nombre: "Milanesa", precio: 1500 }]);
+      const pedidoCreado = {
+        id: "pedido-1",
+        tipoServicio: "barra",
+        mesaId: null,
+        estado: "abierto",
+        items: [],
+      };
+      prisma.pedido.create.mockResolvedValue(pedidoCreado);
+
+      await service.create({ tipoServicio: "barra", items: [{ platoId: "plato-1", cantidad: 1 }] }, TENANT);
+
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "pedido.actualizado", pedidoCreado);
+      expect(realtime.emitToSucursal).not.toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", expect.anything());
+    });
   });
 
   describe("updateEstado", () => {
@@ -216,32 +325,42 @@ describe("PedidosService", () => {
       },
     );
 
-    it("reaching cerrado on a mesa pedido calls marcarEstado(tx, mesaId, libre)", async () => {
+    it("reaching cerrado on a mesa pedido calls marcarEstado(tx, mesaId, libre) and emits both events", async () => {
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
         estado: "cobrado",
         tipoServicio: "mesa",
         mesaId: "mesa-1",
       });
-      prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cerrado", items: [] });
+      const pedidoActualizado = { id: "pedido-1", estado: "cerrado", items: [] };
+      prisma.pedido.update.mockResolvedValue(pedidoActualizado);
+      mesas.marcarEstado.mockResolvedValue({ id: "mesa-1", estado: "libre" });
 
       await service.updateEstado("pedido-1", "cerrado", TENANT);
 
       expect(mesas.marcarEstado).toHaveBeenCalledWith(prisma, "mesa-1", "libre");
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "pedido.actualizado", pedidoActualizado);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", {
+        id: "mesa-1",
+        estado: "libre",
+      });
     });
 
-    it("reaching cerrado on a barra pedido does not call marcarEstado", async () => {
+    it("reaching cerrado on a barra pedido does not call marcarEstado nor emit mesa.actualizada", async () => {
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
         estado: "cobrado",
         tipoServicio: "barra",
         mesaId: null,
       });
-      prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cerrado", items: [] });
+      const pedidoActualizado = { id: "pedido-1", estado: "cerrado", items: [] };
+      prisma.pedido.update.mockResolvedValue(pedidoActualizado);
 
       await service.updateEstado("pedido-1", "cerrado", TENANT);
 
       expect(mesas.marcarEstado).not.toHaveBeenCalled();
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "pedido.actualizado", pedidoActualizado);
+      expect(realtime.emitToSucursal).not.toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", expect.anything());
     });
 
     it("maps P2025 to NotFoundException on a nonexistent id", async () => {

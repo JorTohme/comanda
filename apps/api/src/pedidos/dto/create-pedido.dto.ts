@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsUUID, ValidateNested } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsEnum, IsOptional, IsString, IsUUID, ValidateNested } from "class-validator";
 import { TipoServicio } from "@prisma/client";
 import { CreateItemPedidoDto } from "./create-item-pedido.dto";
 
@@ -16,4 +16,8 @@ export class CreatePedidoDto {
   @ValidateNested({ each: true })
   @Type(() => CreateItemPedidoDto)
   items!: CreateItemPedidoDto[];
+
+  @IsOptional()
+  @IsString()
+  clientRequestId?: string;
 }

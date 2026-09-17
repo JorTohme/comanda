@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { CreatePlatoDto } from "./dto/create-plato.dto";
 import { UpdatePlatoDto } from "./dto/update-plato.dto";
 
@@ -10,7 +11,10 @@ function isForeignKeyViolationError(error: unknown): boolean {
 
 @Injectable()
 export class PlatosService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RealtimeGateway) private readonly realtime: RealtimeGateway,
+  ) {}
 
   private async assertCategoriaExists(categoriaId: string, tenant: TenantContext) {
     if (!(await this.prisma.categoria.findFirst({ where: { id: categoriaId, ...tenant }, select: { id: true } }))) {
@@ -30,7 +34,9 @@ export class PlatosService {
   async update(id: string, dto: UpdatePlatoDto, tenant: TenantContext) {
     await this.assertExists(id, tenant);
     if (dto.categoriaId) await this.assertCategoriaExists(dto.categoriaId, tenant);
-    return this.prisma.plato.update({ where: { id }, data: dto });
+    const plato = await this.prisma.plato.update({ where: { id }, data: dto });
+    this.realtime.emitToSucursal(tenant.sucursalId, "plato.actualizado", plato);
+    return plato;
   }
 
   async remove(id: string, tenant: TenantContext) {

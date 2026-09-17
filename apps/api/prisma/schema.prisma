@@ -50,6 +50,12 @@ model Mesa {
   nombre     String
   capacidad  Int
   estado     EstadoMesa @default(libre)
+  posX       Float?
+  posY       Float?
+  rotacion   Float?     @default(0)
+  forma      String?    @default("rect")
+  ancho      Float?     @default(70)
+  alto       Float?     @default(70)
   orgId      String
   sucursalId String
   organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
@@ -77,14 +83,15 @@ enum EstadoPedido {
 }
 
 model Pedido {
-  id           String       @id @default(uuid())
-  tipoServicio TipoServicio
-  mesaId       String?
-  mesa         Mesa?        @relation(fields: [mesaId], references: [id], onDelete: Restrict)
-  estado       EstadoPedido @default(abierto)
-  items        ItemPedido[]
-  orgId        String
-  sucursalId   String
+  id              String       @id @default(uuid())
+  tipoServicio    TipoServicio
+  mesaId          String?
+  mesa            Mesa?        @relation(fields: [mesaId], references: [id], onDelete: Restrict)
+  estado          EstadoPedido @default(abierto)
+  items           ItemPedido[]
+  clientRequestId String?      @unique
+  orgId           String
+  sucursalId      String
   organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
   turnoCajaId  String?

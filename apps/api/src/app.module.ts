@@ -7,6 +7,7 @@ import { PlatosModule } from "./catalogo/platos/platos.module";
 import { HealthModule } from "./health/health.module";
 import { PedidosModule } from "./pedidos/pedidos.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { RealtimeModule } from "./realtime/realtime.module";
 import { MesasModule } from "./salon/mesas/mesas.module";
 
 @Module({
@@ -14,6 +15,7 @@ import { MesasModule } from "./salon/mesas/mesas.module";
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    RealtimeModule,
     HealthModule,
     CategoriasModule,
     PlatosModule,

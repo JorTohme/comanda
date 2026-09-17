@@ -3,18 +3,31 @@ schema: spec-driven
 
 context: |
   Tech stack: pnpm 9.1.2 + Turborepo monorepo. apps/api (NestJS 10, TS strict,
-  Prisma ORM), apps/web (Next.js 14 App Router), apps/operativa (Vite 5 +
-  React 18 PWA), packages/shared (plain TS contracts + fetch wrappers, no
-  runtime deps). Postgres 16 + Redis 7 via docker-compose, wired into apps/api
-  via PrismaService (Redis still unused).
+  Prisma ORM), apps/web (Next.js 14 App Router, Tailwind "Cálido hospitalidad"
+  design system per DESIGN.md), apps/operativa (Vite 5 + React 18 PWA, RxDB
+  offline store since Iter 5, plain CSS "Organic" design system per
+  DESIGN.md), packages/shared (plain TS contracts + fetch wrappers, no
+  runtime deps other than zod and socket.io-client). Postgres 16 + Redis 7 via
+  docker-compose, wired into apps/api via PrismaService and, since Iter 4, via
+  the Socket.io Redis adapter (apps/api/src/realtime). Since Iter 6, `Mesa`
+  carries its position on a 2D floor plan (posX/posY as % of container,
+  rotacion, forma, ancho/alto) — edited by drag in apps/web /salon (Pointer
+  Events, no canvas lib), rendered read-only in apps/operativa MozoView.
   Architecture: Screaming/domain-oriented monorepo. apps/api/src/catalogo
-  (Categoria, Plato), apps/api/src/salon (Mesa), and apps/api/src/pedidos
-  (Pedido, ItemPedido) are the current domain modules, each a NestJS
+  (Categoria, Plato), apps/api/src/salon (Mesa), apps/api/src/pedidos
+  (Pedido, ItemPedido), and apps/api/src/realtime (RealtimeGateway, global
+  module) are the current domain/infra modules, each a NestJS
   module/controller/service/DTO slice against PrismaService, wired into
-  app.module.ts. apps/web has one admin page per domain (app/catalogo,
-  app/salon, app/pedidos) consuming packages/shared's fetch wrappers; no UI
-  library, inline styles, local-array state updates from resolved API
-  responses (no optimistic apply, no refetch-on-mutate).
+  app.module.ts. PedidosService/MesasService/PlatosService inject
+  RealtimeGateway and emit pedido.actualizado/mesa.actualizada/
+  plato.actualizado to a per-sucursal Socket.io room right after each write
+  resolves (never inside a $transaction callback). apps/web has one admin
+  page per domain (app/catalogo, app/salon, app/pedidos, app/caja) consuming
+  packages/shared's fetch wrappers; no UI library, inline styles, local-array
+  state updates from resolved API responses (no optimistic apply); /salon
+  also listens live via connectRealtime(). apps/operativa (MozoView,
+  CocinaView) replaced its 5s polling with the same connectRealtime()
+  listeners.
   Testing: apps/api uses Jest (`pnpm --filter api test`), colocated
   *.service.spec.ts, RED-first against a mocked PrismaService. packages/shared
   has its own Jest runner (`pnpm --filter shared test`) for logic-bearing

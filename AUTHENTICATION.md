@@ -22,6 +22,7 @@ Esta guía explica cómo iniciar el primer tenant y qué no se puede romper cuan
 ## Límites intencionales
 
 - `POST /auth/register` es un bootstrap. Antes de producción necesita reglas de invitación o provisioning: no debe quedar público sin ese flujo.
+- `POST /auth/register` crea organización y sucursal nuevas en cada llamada: hoy no hay forma de sumar un segundo usuario (caja, mozo, cocina) a una sucursal ya existente por API. Falta un endpoint tipo `POST /usuarios`, protegido por rol `admin`, que tome `orgId`/`sucursalId` del token en vez de crearlos de cero.
 - `admin`, `caja`, `mozo` y `cocina` ya viajan en el token, pero todavía no hay permisos por endpoint. Agregalos sólo cuando exista la matriz de roles.
 - Las filas anteriores a la migración se conservan bajo `Organización inicial` / `Sucursal inicial`. No son accesibles hasta provisionar un usuario de esa sucursal de forma administrativa.
 
