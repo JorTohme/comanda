@@ -67,7 +67,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   useEffect(() => {
     cargarDatos().finally(() => setCargando(false));
 
-    const stopAutoSync = setupAutoSync(API_URL);
+    const stopAutoSync = setupAutoSync(API_URL, (err) => setError(mensajeDeError(err)));
     const socket = connectRealtime(API_URL, session.accessToken);
     socket.on("pedido.actualizado", async (pedido: Pedido) => {
       const db = await getDb();

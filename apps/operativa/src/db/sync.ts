@@ -78,9 +78,9 @@ export async function flushOutbox(apiUrl: string): Promise<void> {
   }
 }
 
-export function setupAutoSync(apiUrl: string): () => void {
+export function setupAutoSync(apiUrl: string, onError?: (err: unknown) => void): () => void {
   const handler = () => {
-    flushOutbox(apiUrl).catch(() => {});
+    flushOutbox(apiUrl).catch((err: unknown) => onError?.(err));
   };
   window.addEventListener("online", handler);
   handler();

@@ -1,6 +1,6 @@
 # Pedidos Specification (delta)
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Create Pedido is idempotent via clientRequestId
 
