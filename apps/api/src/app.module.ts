@@ -5,6 +5,7 @@ import { CajaModule } from "./caja/caja.module";
 import { CategoriasModule } from "./catalogo/categorias/categorias.module";
 import { PlatosModule } from "./catalogo/platos/platos.module";
 import { HealthModule } from "./health/health.module";
+import { PagosModule } from "./pagos/pagos.module";
 import { PedidosModule } from "./pedidos/pedidos.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RealtimeModule } from "./realtime/realtime.module";
@@ -22,6 +23,7 @@ import { MesasModule } from "./salon/mesas/mesas.module";
     MesasModule,
     PedidosModule,
     CajaModule,
+    PagosModule,
   ],
 })
 export class AppModule {}

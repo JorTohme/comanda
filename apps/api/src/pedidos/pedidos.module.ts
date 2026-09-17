@@ -8,5 +8,6 @@ import { PedidosService } from "./pedidos.service";
   imports: [MesasModule, CajaModule],
   controllers: [PedidosController],
   providers: [PedidosService],
+  exports: [PedidosService],
 })
 export class PedidosModule {}

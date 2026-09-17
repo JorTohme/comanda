@@ -5,6 +5,8 @@ import {
   abrirTurno,
   centavosToPesos,
   cerrarTurno,
+  crearPreferenciaPago,
+  listPedidos,
   obtenerTurnoActual,
   pesosToCentavos,
   registrarMovimiento,
@@ -39,6 +41,8 @@ export default function CajaPage() {
   const [resultadoCierre, setResultadoCierre] = useState<TurnoCaja | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [pedidosPendientesCobro, setPedidosPendientesCobro] = useState<Pedido[]>([]);
+  const [cobrandoPedidoId, setCobrandoPedidoId] = useState<string | null>(null);
 
   const [montoInicialPesos, setMontoInicialPesos] = useState("");
   const [movimientoForm, setMovimientoForm] = useState(MOVIMIENTO_FORM_VACIO);
@@ -49,7 +53,25 @@ export default function CajaPage() {
       .then(setTurno)
       .catch((err: unknown) => setError(mensajeDeError(err)))
       .finally(() => setCargando(false));
+    // Dataset is small (single-shift MVP): fetch all pedidos and filter client-side instead of
+    // adding a filtered backend endpoint just for this list.
+    listPedidos(API_URL)
+      .then((pedidos) => setPedidosPendientesCobro(pedidos.filter((p) => p.estado === "entregado")))
+      .catch((err: unknown) => setError(mensajeDeError(err)));
   }, []);
+
+  async function handleCobrarConMercadoPago(pedidoId: string) {
+    setError(null);
+    setCobrandoPedidoId(pedidoId);
+    try {
+      const { initPoint } = await crearPreferenciaPago(API_URL, pedidoId);
+      window.open(initPoint, "_blank");
+    } catch (err) {
+      setError(mensajeDeError(err));
+    } finally {
+      setCobrandoPedidoId(null);
+    }
+  }
 
   async function handleAbrirTurno(e: React.FormEvent) {
     e.preventDefault();
@@ -116,6 +138,27 @@ export default function CajaPage() {
       <PageHeader eyebrow="Operación" title="Caja" description="Turnos, movimientos y cierre" />
 
       <ErrorBanner message={error} />
+
+      {pedidosPendientesCobro.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="font-serif text-lg font-semibold text-ink">Pedidos entregados, pendientes de cobro</h2>
+          <div className="space-y-2">
+            {pedidosPendientesCobro.map((pedido) => (
+              <Card key={pedido.id} className="flex items-center justify-between gap-3 py-3">
+                <span className="text-sm capitalize text-muted">{pedido.tipoServicio}</span>
+                <span className="text-sm font-medium text-ink">{centavosToPesos(totalPedido(pedido))}</span>
+                <Button
+                  size="sm"
+                  onClick={() => handleCobrarConMercadoPago(pedido.id)}
+                  disabled={cobrandoPedidoId === pedido.id}
+                >
+                  {cobrandoPedidoId === pedido.id ? "Abriendo..." : "Cobrar con Mercado Pago"}
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {resultadoCierre && (
         <Card className="space-y-3">

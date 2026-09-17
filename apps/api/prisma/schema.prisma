@@ -96,8 +96,34 @@ model Pedido {
   sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
   turnoCajaId  String?
   turnoCaja    TurnoCaja?   @relation(fields: [turnoCajaId], references: [id], onDelete: Restrict)
+  pago         Pago?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+
+  @@index([orgId, sucursalId])
+}
+
+enum EstadoPago {
+  pendiente
+  aprobado
+  rechazado
+}
+
+model Pago {
+  id             String     @id @default(uuid())
+  pedidoId       String     @unique
+  pedido         Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
+  mpPaymentId    String?    @unique
+  mpPreferenceId String
+  mpInitPoint    String
+  estado         EstadoPago @default(pendiente)
+  monto          Int
+  orgId          String
+  sucursalId     String
+  organizacion   Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sucursal       Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   @@index([orgId, sucursalId])
 }
@@ -167,6 +193,7 @@ model Organizacion {
   mesas      Mesa[]
   pedidos    Pedido[]
   turnosCaja TurnoCaja[]
+  pagos      Pago[]
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 }
@@ -182,6 +209,7 @@ model Sucursal {
   mesas          Mesa[]
   pedidos        Pedido[]
   turnosCaja     TurnoCaja[]
+  pagos          Pago[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

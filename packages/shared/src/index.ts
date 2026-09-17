@@ -47,6 +47,20 @@ export const turnoCajaSchema = tenantSchema.extend({ id: z.string().uuid(), esta
 export type TurnoCaja = z.infer<typeof turnoCajaSchema>;
 export const turnoCajaDetalleSchema = turnoCajaSchema.extend({ movimientos: z.array(movimientoCajaSchema), pedidos: z.array(pedidoSchema), totalCalculado: z.number().int() });
 export type TurnoCajaDetalle = z.infer<typeof turnoCajaDetalleSchema>;
+export const estadoPagoSchema = z.enum(["pendiente", "aprobado", "rechazado"]);
+export type EstadoPago = z.infer<typeof estadoPagoSchema>;
+export const pagoSchema = tenantSchema.extend({
+  id: z.string().uuid(),
+  pedidoId: z.string().uuid(),
+  mpPaymentId: z.string().nullable(),
+  mpPreferenceId: z.string(),
+  mpInitPoint: z.string(),
+  estado: estadoPagoSchema,
+  monto: z.number().int(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export type Pago = z.infer<typeof pagoSchema>;
 
 export type CreateCategoriaInput = { nombre: string };
 export type UpdateCategoriaInput = Partial<CreateCategoriaInput>;
@@ -140,6 +154,9 @@ export async function listTurnos(baseUrl: string, options?: ApiOptions): Promise
 export async function obtenerTurno(baseUrl: string, id: string, options?: ApiOptions): Promise<TurnoCajaDetalle> { const url = `${baseUrl}/caja/turnos/${id}`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), turnoCajaDetalleSchema, "GET", url); }
 export async function registrarMovimiento(baseUrl: string, turnoId: string, input: CreateMovimientoInput, options?: ApiOptions): Promise<MovimientoCaja> { const url = `${baseUrl}/caja/turnos/${turnoId}/movimientos`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), movimientoCajaSchema, "POST", url); }
 export async function cerrarTurno(baseUrl: string, id: string, input: CerrarTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos/${id}/cerrar`; return parseJsonOrThrow(await fetch(url, { method: "PATCH", headers: headers(options, true), body: JSON.stringify(input) }), turnoCajaSchema, "PATCH", url); }
+
+const preferenciaPagoSchema = z.object({ initPoint: z.string(), preferenceId: z.string() });
+export async function crearPreferenciaPago(baseUrl: string, pedidoId: string, options?: ApiOptions): Promise<{ initPoint: string; preferenceId: string }> { const url = `${baseUrl}/pagos/preferencia`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify({ pedidoId }) }), preferenciaPagoSchema, "POST", url); }
 
 export const rolUsuarioSchema = z.enum(["admin", "caja", "mozo", "cocina"]);
 export type RolUsuario = z.infer<typeof rolUsuarioSchema>;
