@@ -10,10 +10,10 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
-        <header className="border-b border-slate-200 bg-white">
+      <body className="min-h-screen bg-bg font-sans text-ink antialiased">
+        <header className="border-b border-hairline bg-surface">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-            <span className="text-lg font-semibold text-slate-900">Comanda</span>
+            <span className="font-serif text-lg font-semibold text-ink">Comanda</span>
             <NavLinks />
             <AuthSession />
           </div>

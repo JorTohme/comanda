@@ -24,7 +24,7 @@ import { Badge } from "../_components/Badge";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const INPUT_CLASSES =
-  "rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+  "rounded-full border border-hairline bg-bg px-4 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 const ESTADO_PEDIDO_TONE: Record<EstadoPedido, "neutral" | "info" | "success" | "warning" | "danger" | "brand"> = {
   abierto: "neutral",
@@ -34,6 +34,16 @@ const ESTADO_PEDIDO_TONE: Record<EstadoPedido, "neutral" | "info" | "success" | 
   entregado: "brand",
   cobrado: "success",
   cerrado: "neutral",
+};
+
+const LABEL_ESTADO_PEDIDO: Record<EstadoPedido, string> = {
+  abierto: "Abierto",
+  enviado_a_cocina: "En cocina",
+  en_preparacion: "En preparación",
+  listo: "Listo",
+  entregado: "Entregado",
+  cobrado: "Cobrado",
+  cerrado: "Cerrado",
 };
 
 type ItemFormRow = { platoId: string; cantidad: string };
@@ -129,20 +139,20 @@ export default function PedidosPage() {
   if (cargando) {
     return (
       <div className="space-y-8">
-        <PageHeader title="Pedidos" />
-        <p className="text-sm text-slate-500">Cargando...</p>
+        <PageHeader eyebrow="Operación" title="Pedidos" />
+        <p className="text-sm text-muted">Cargando...</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Pedidos" />
+      <PageHeader eyebrow="Operación" title="Pedidos" />
 
       <ErrorBanner message={error} />
 
       <Card className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Nuevo pedido</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">Nuevo pedido</h2>
         <form className="space-y-3" onSubmit={handleSubmitPedido}>
           <div className="flex flex-wrap gap-3">
             <select
@@ -207,34 +217,34 @@ export default function PedidosPage() {
             Agregar línea
           </Button>
 
-          <p className="text-lg font-semibold text-slate-900">Total: {centavosToPesos(totalFormulario())}</p>
+          <p className="font-serif text-lg font-semibold text-accent">Total: {centavosToPesos(totalFormulario())}</p>
 
           <Button type="submit">Crear pedido</Button>
         </form>
       </Card>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Pedidos</h2>
+        <h2 className="font-serif text-lg font-semibold text-ink">Pedidos</h2>
         <div className="space-y-3">
           {pedidos.map((pedido) => {
             const siguiente = SIGUIENTE_ESTADO_PEDIDO[pedido.estado];
             return (
               <Card key={pedido.id}>
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold capitalize text-slate-900">{pedido.tipoServicio}</span>
-                  <Badge tone={ESTADO_PEDIDO_TONE[pedido.estado]}>{pedido.estado}</Badge>
+                  <span className="font-serif font-semibold capitalize text-ink">{pedido.tipoServicio}</span>
+                  <Badge tone={ESTADO_PEDIDO_TONE[pedido.estado]}>{LABEL_ESTADO_PEDIDO[pedido.estado]}</Badge>
                 </div>
-                <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                <ul className="mt-2 space-y-1 text-sm text-muted">
                   {pedido.items.map((item) => (
                     <li key={item.id}>
                       {item.nombre} × {item.cantidad} a {centavosToPesos(item.precioUnitario)}
                     </li>
                   ))}
                 </ul>
-                <p className="mt-2 font-medium text-slate-900">Total: {centavosToPesos(totalPedido(pedido))}</p>
+                <p className="mt-2 font-medium text-ink">Total: {centavosToPesos(totalPedido(pedido))}</p>
                 {siguiente && (
                   <Button size="sm" className="mt-3" onClick={() => handleAvanzar(pedido)}>
-                    Avanzar a {siguiente}
+                    Avanzar a {LABEL_ESTADO_PEDIDO[siguiente]}
                   </Button>
                 )}
               </Card>

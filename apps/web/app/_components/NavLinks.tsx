@@ -22,8 +22,8 @@ export function NavLinks() {
             href={link.href}
             className={
               active
-                ? "rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white"
-                : "rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                ? "rounded-full bg-accent px-3 py-2 text-sm font-medium text-white"
+                : "rounded-full px-3 py-2 text-sm font-medium text-muted hover:bg-hairline"
             }
           >
             {link.label}

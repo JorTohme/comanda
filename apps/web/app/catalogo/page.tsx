@@ -18,13 +18,14 @@ import { PageHeader } from "../_components/PageHeader";
 import { ErrorBanner } from "../_components/ErrorBanner";
 import { Card } from "../_components/Card";
 import { Button } from "../_components/Button";
+import { Badge } from "../_components/Badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const FORM_VACIO = { nombre: "", precioPesos: "", categoriaId: "", disponible: true };
 
 const INPUT_CLASSES =
-  "rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+  "rounded-full border border-hairline bg-bg px-4 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 export default function CatalogoPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -126,28 +127,29 @@ export default function CatalogoPage() {
     }
   }
 
-  function nombreCategoria(categoriaId: string): string {
-    return categorias.find((c) => c.id === categoriaId)?.nombre ?? categoriaId;
-  }
-
   if (cargando) {
     return (
       <div className="space-y-8">
-        <PageHeader title="Catálogo" />
-        <p className="text-sm text-slate-500">Cargando...</p>
+        <PageHeader eyebrow="Gestión" title="Catálogo" />
+        <p className="text-sm text-muted">Cargando...</p>
       </div>
     );
   }
 
+  const categoriasConPlatos = categorias
+    .map((categoria) => ({ categoria, platos: platos.filter((p) => p.categoriaId === categoria.id) }))
+    .filter(({ platos }) => platos.length > 0);
+  const sinCategoria = platos.filter((p) => !categorias.some((c) => c.id === p.categoriaId));
+
   return (
-    <div className="space-y-8">
-      <PageHeader title="Catálogo" description="Gestioná categorías y platos" />
+    <div className="space-y-10">
+      <PageHeader eyebrow="Gestión" title="Catálogo" description="Categorías y platos" />
 
       <ErrorBanner message={error} />
 
       <Card className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Categorías</h2>
-        <form className="flex flex-wrap items-end gap-3" onSubmit={handleCrearCategoria}>
+        <h2 className="font-serif text-lg font-semibold text-ink">Categorías</h2>
+        <form className="flex flex-wrap items-center gap-3" onSubmit={handleCrearCategoria}>
           <input
             type="text"
             placeholder="Nombre de categoría"
@@ -158,39 +160,31 @@ export default function CatalogoPage() {
           />
           <Button type="submit">Agregar categoría</Button>
         </form>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-3 py-2 font-medium">Nombre</th>
-                <th className="px-3 py-2 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {categorias.map((categoria) => (
-                <tr key={categoria.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2">{categoria.nombre}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleEliminarCategoria(categoria.id)}
-                      >
-                        Eliminar
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex flex-wrap gap-2">
+          {categorias.map((categoria) => (
+            <span
+              key={categoria.id}
+              className="inline-flex items-center gap-2 rounded-full border border-hairline bg-bg px-3 py-1.5 text-sm text-ink"
+            >
+              {categoria.nombre}
+              <button
+                type="button"
+                onClick={() => handleEliminarCategoria(categoria.id)}
+                className="text-muted hover:text-danger"
+                aria-label={`Eliminar ${categoria.nombre}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       </Card>
 
       <Card className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Platos</h2>
-        <form className="flex flex-wrap items-end gap-3" onSubmit={handleSubmitPlato}>
+        <h2 className="font-serif text-lg font-semibold text-ink">
+          {editandoPlatoId ? "Editar plato" : "Agregar plato"}
+        </h2>
+        <form className="flex flex-wrap items-center gap-3" onSubmit={handleSubmitPlato}>
           <input
             type="text"
             placeholder="Nombre del plato"
@@ -221,12 +215,12 @@ export default function CatalogoPage() {
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
               checked={form.disponible}
               onChange={(e) => setForm({ ...form, disponible: e.target.checked })}
-              className="accent-brand-600"
+              className="accent-accent"
             />
             Disponible
           </label>
@@ -237,47 +231,81 @@ export default function CatalogoPage() {
             </Button>
           )}
         </form>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-3 py-2 font-medium">Nombre</th>
-                <th className="px-3 py-2 font-medium">Precio</th>
-                <th className="px-3 py-2 font-medium">Categoría</th>
-                <th className="px-3 py-2 font-medium">Disponible</th>
-                <th className="px-3 py-2 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {platos.map((plato) => (
-                <tr key={plato.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2">{plato.nombre}</td>
-                  <td className="px-3 py-2">{centavosToPesos(plato.precio)}</td>
-                  <td className="px-3 py-2">{nombreCategoria(plato.categoriaId)}</td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={plato.disponible}
-                      onChange={() => handleToggleDisponible(plato)}
-                      className="accent-brand-600"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex gap-2">
-                      <Button variant="secondary" size="sm" onClick={() => handleEditarPlato(plato)}>
-                        Editar
-                      </Button>
-                      <Button variant="danger" size="sm" onClick={() => handleEliminarPlato(plato.id)}>
-                        Eliminar
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </Card>
+
+      <div className="space-y-8">
+        {categoriasConPlatos.map(({ categoria, platos: platosCategoria }) => (
+          <section key={categoria.id} className="space-y-3">
+            <div className="flex items-center gap-3">
+              <h3 className="font-serif text-base font-semibold text-ink">{categoria.nombre}</h3>
+              <div className="h-px flex-1 bg-hairline" />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+              {platosCategoria.map((plato) => (
+                <PlatoCard
+                  key={plato.id}
+                  plato={plato}
+                  onToggleDisponible={() => handleToggleDisponible(plato)}
+                  onEditar={() => handleEditarPlato(plato)}
+                  onEliminar={() => handleEliminarPlato(plato.id)}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+
+        {sinCategoria.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-3">
+              <h3 className="font-serif text-base font-semibold text-ink">Sin categoría</h3>
+              <div className="h-px flex-1 bg-hairline" />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+              {sinCategoria.map((plato) => (
+                <PlatoCard
+                  key={plato.id}
+                  plato={plato}
+                  onToggleDisponible={() => handleToggleDisponible(plato)}
+                  onEditar={() => handleEditarPlato(plato)}
+                  onEliminar={() => handleEliminarPlato(plato.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PlatoCard({
+  plato,
+  onToggleDisponible,
+  onEditar,
+  onEliminar,
+}: {
+  plato: Plato;
+  onToggleDisponible: () => void;
+  onEditar: () => void;
+  onEliminar: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-hairline bg-surface p-4 shadow-card">
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-serif text-[15px] font-semibold text-ink">{plato.nombre}</span>
+        <button type="button" onClick={onEditar} className="text-muted hover:text-accent" aria-label={`Editar ${plato.nombre}`}>
+          ✎
+        </button>
+      </div>
+      <p className="mt-1 font-serif text-lg font-semibold text-accent">{centavosToPesos(plato.precio)}</p>
+      <div className="mt-3 flex items-center justify-between">
+        <button type="button" onClick={onToggleDisponible}>
+          <Badge tone={plato.disponible ? "success" : "warning"}>{plato.disponible ? "Disponible" : "Agotado"}</Badge>
+        </button>
+        <button type="button" onClick={onEliminar} className="text-xs text-muted hover:text-danger">
+          Eliminar
+        </button>
+      </div>
     </div>
   );
 }

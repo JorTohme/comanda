@@ -25,11 +25,41 @@ export function AuthSession() {
     }
   }
 
-  if (authenticated) return <button type="button" className="text-sm text-slate-600" onClick={() => { window.localStorage.removeItem("comanda.accessToken"); window.location.reload(); }}>Cerrar sesión</button>;
-  return <form className="flex items-center gap-2" onSubmit={submit}>
-    <input aria-label="Email" className="w-40 rounded border px-2 py-1 text-sm" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-    <input aria-label="Contraseña" className="w-32 rounded border px-2 py-1 text-sm" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-    <button className="rounded bg-slate-900 px-2 py-1 text-sm text-white" type="submit">Ingresar</button>
-    {error && <span className="text-xs text-red-600">{error}</span>}
-  </form>;
+  if (authenticated)
+    return (
+      <button
+        type="button"
+        className="text-sm font-medium text-muted hover:text-ink"
+        onClick={() => {
+          window.localStorage.removeItem("comanda.accessToken");
+          window.location.reload();
+        }}
+      >
+        Cerrar sesión
+      </button>
+    );
+  return (
+    <form className="flex items-center gap-2" onSubmit={submit}>
+      <input
+        aria-label="Email"
+        className="w-40 rounded-full border border-hairline bg-bg px-3 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+        type="email"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        required
+      />
+      <input
+        aria-label="Contraseña"
+        className="w-32 rounded-full border border-hairline bg-bg px-3 py-1.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+        type="password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        required
+      />
+      <button className="rounded-full bg-ink px-3 py-1.5 text-sm font-medium text-white" type="submit">
+        Ingresar
+      </button>
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </form>
+  );
 }

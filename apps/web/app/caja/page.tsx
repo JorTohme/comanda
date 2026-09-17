@@ -22,7 +22,7 @@ import { Badge } from "../_components/Badge";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 const INPUT_CLASSES =
-  "rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+  "rounded-full border border-hairline bg-bg px-4 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 const MOVIMIENTO_FORM_VACIO: { tipo: TipoMovimientoCaja; montoPesos: string; descripcion: string } = {
   tipo: "ingreso",
@@ -105,29 +105,29 @@ export default function CajaPage() {
   if (cargando) {
     return (
       <div className="space-y-8">
-        <PageHeader title="Caja" description="Turnos, movimientos y cierre" />
-        <p className="text-sm text-slate-500">Cargando...</p>
+        <PageHeader eyebrow="Operación" title="Caja" description="Turnos, movimientos y cierre" />
+        <p className="text-sm text-muted">Cargando...</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Caja" description="Turnos, movimientos y cierre" />
+      <PageHeader eyebrow="Operación" title="Caja" description="Turnos, movimientos y cierre" />
 
       <ErrorBanner message={error} />
 
       {resultadoCierre && (
         <Card className="space-y-3">
-          <h2 className="text-lg font-semibold text-slate-900">Turno cerrado</h2>
-          <p className="text-sm text-slate-600">Monto inicial: {centavosToPesos(resultadoCierre.montoInicial)}</p>
-          <p className="text-sm text-slate-600">
+          <h2 className="font-serif text-lg font-semibold text-ink">Turno cerrado</h2>
+          <p className="text-sm text-muted">Monto inicial: {centavosToPesos(resultadoCierre.montoInicial)}</p>
+          <p className="text-sm text-muted">
             Total calculado: {centavosToPesos(resultadoCierre.totalCalculado ?? 0)}
           </p>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             Monto declarado: {centavosToPesos(resultadoCierre.montoDeclarado ?? 0)}
           </p>
-          <p className="flex items-center gap-2 text-sm text-slate-600">
+          <p className="flex items-center gap-2 text-sm text-muted">
             Diferencia: {centavosToPesos(resultadoCierre.diferencia ?? 0)}
             <Badge tone={(resultadoCierre.diferencia ?? 0) === 0 ? "success" : "danger"}>
               {(resultadoCierre.diferencia ?? 0) === 0 ? "Cuadrado" : "Descuadrado"}
@@ -139,7 +139,7 @@ export default function CajaPage() {
 
       {!resultadoCierre && !turno && (
         <Card className="space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Abrir turno</h2>
+          <h2 className="font-serif text-lg font-semibold text-ink">Abrir turno</h2>
           <form className="flex flex-wrap items-end gap-3" onSubmit={handleAbrirTurno}>
             <input
               type="number"
@@ -159,16 +159,16 @@ export default function CajaPage() {
       {!resultadoCierre && turno && (
         <>
           <Card className="space-y-1">
-            <h2 className="text-lg font-semibold text-slate-900">Turno abierto</h2>
-            <p className="text-sm text-slate-600">Monto inicial: {centavosToPesos(turno.montoInicial)}</p>
-            <p className="text-sm text-slate-600">Abierto en: {new Date(turno.abiertoEn).toLocaleString()}</p>
-            <p className="text-lg font-semibold text-slate-900">
+            <h2 className="font-serif text-lg font-semibold text-ink">Turno abierto</h2>
+            <p className="text-sm text-muted">Monto inicial: {centavosToPesos(turno.montoInicial)}</p>
+            <p className="text-sm text-muted">Abierto en: {new Date(turno.abiertoEn).toLocaleString()}</p>
+            <p className="font-serif text-lg font-semibold text-accent">
               Total: {centavosToPesos(turno.totalCalculado)}
             </p>
           </Card>
 
           <Card className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-900">Registrar movimiento</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Registrar movimiento</h2>
             <form className="flex flex-wrap items-end gap-3" onSubmit={handleRegistrarMovimiento}>
               <select
                 value={movimientoForm.tipo}
@@ -203,17 +203,17 @@ export default function CajaPage() {
           </Card>
 
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-900">Movimientos</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Movimientos</h2>
             <div className="space-y-2">
               {turno.movimientos.map((movimiento) => (
                 <Card key={movimiento.id} className="flex items-center justify-between py-3">
-                  <div className="text-sm text-slate-600">
+                  <div className="text-sm text-muted">
                     <Badge tone={movimiento.tipo === "ingreso" ? "success" : "danger"}>
                       {movimiento.tipo}
                     </Badge>{" "}
                     {movimiento.descripcion}
                   </div>
-                  <div className="text-sm font-medium text-slate-900">
+                  <div className="text-sm font-medium text-ink">
                     {centavosToPesos(movimiento.monto)}
                   </div>
                 </Card>
@@ -222,12 +222,12 @@ export default function CajaPage() {
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-900">Pedidos del turno</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Pedidos del turno</h2>
             <div className="space-y-2">
               {turno.pedidos.map((pedido) => (
                 <Card key={pedido.id} className="flex items-center justify-between py-3">
-                  <span className="text-sm capitalize text-slate-600">{pedido.tipoServicio}</span>
-                  <span className="text-sm font-medium text-slate-900">
+                  <span className="text-sm capitalize text-muted">{pedido.tipoServicio}</span>
+                  <span className="text-sm font-medium text-ink">
                     {centavosToPesos(totalPedido(pedido))}
                   </span>
                 </Card>
@@ -236,7 +236,7 @@ export default function CajaPage() {
           </section>
 
           <Card className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-900">Cerrar turno</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Cerrar turno</h2>
             <form className="flex flex-wrap items-end gap-3" onSubmit={handleCerrarTurno}>
               <input
                 type="number"

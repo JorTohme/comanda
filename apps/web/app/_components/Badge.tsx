@@ -3,18 +3,18 @@ type BadgeProps = React.ComponentPropsWithoutRef<"span"> & {
 };
 
 const TONE_CLASSES: Record<NonNullable<BadgeProps["tone"]>, string> = {
-  neutral: "bg-slate-100 text-slate-700",
-  info: "bg-sky-100 text-sky-800",
-  success: "bg-emerald-100 text-emerald-800",
-  warning: "bg-amber-100 text-amber-800",
-  danger: "bg-rose-100 text-rose-800",
-  brand: "bg-brand-100 text-brand-800",
+  neutral: "bg-hairline text-muted",
+  info: "bg-accent/10 text-accent-hover",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  danger: "bg-danger-light text-danger",
+  brand: "bg-accent text-white",
 };
 
 export function Badge({ tone = "neutral", className = "", ...props }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TONE_CLASSES[tone]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium before:h-1.5 before:w-1.5 before:rounded-full before:bg-current before:content-[''] ${TONE_CLASSES[tone]} ${className}`}
       {...props}
     />
   );

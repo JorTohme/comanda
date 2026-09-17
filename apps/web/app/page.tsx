@@ -15,9 +15,9 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="space-y-8">
-      <h1>Comanda — Consola</h1>
-      <p>
+    <div className="space-y-2">
+      <h1 className="font-serif text-2xl font-semibold text-ink">Comanda — Consola</h1>
+      <p className="text-sm text-muted">
         api ({API_URL}):{" "}
         {health === "loading" ? "checking..." : health === "unreachable" ? "unreachable" : health.status}
       </p>
