@@ -55,7 +55,7 @@ const platoSchema: RxJsonSchema<Plato> = {
 } as RxJsonSchema<Plato>;
 
 const pedidoSchema: RxJsonSchema<Pedido> = {
-  version: 0,
+  version: 1,
   primaryKey: "id",
   type: "object",
   properties: {
@@ -64,6 +64,8 @@ const pedidoSchema: RxJsonSchema<Pedido> = {
     sucursalId: { type: "string" },
     tipoServicio: { type: "string" },
     mesaId: { type: ["string", "null"] },
+    plataforma: { type: ["string", "null"] },
+    direccionEnvio: { type: ["string", "null"] },
     estado: { type: "string" },
     clientRequestId: { type: ["string", "null"] },
     items: {
@@ -107,7 +109,8 @@ export function getDb(): Promise<RxDatabase> {
         // ponytail: campos nuevos son todos opcionales, alcanza con devolver el doc tal cual — sube a v2 con su propia estrategia si algún campo futuro deja de serlo
         mesas: { schema: mesaSchema, migrationStrategies: { 1: (oldDoc: unknown) => oldDoc } },
         platos: { schema: platoSchema },
-        pedidos: { schema: pedidoSchema },
+        // ponytail: plataforma/direccionEnvio son opcionales, alcanza con devolver el doc tal cual — sube a v2 con su propia estrategia si algún campo futuro deja de serlo
+        pedidos: { schema: pedidoSchema, migrationStrategies: { 1: (oldDoc: unknown) => oldDoc } },
         outbox: { schema: outboxSchema },
       });
       return db;

@@ -10,6 +10,8 @@ import { assertTransicionValida } from "./estado-pedido";
 export interface CreatePedidoInput {
   tipoServicio: TipoServicio;
   mesaId?: string;
+  plataforma?: string;
+  direccionEnvio?: string;
   items: { platoId: string; cantidad: number }[];
   clientRequestId?: string;
 }
@@ -33,8 +35,18 @@ export class PedidosService {
     }
 
     if (input.tipoServicio === "mesa" && !input.mesaId) throw new BadRequestException("mesaId is required when tipoServicio=mesa");
-    if (input.tipoServicio === "barra" && input.mesaId) throw new BadRequestException("mesaId must not be set when tipoServicio=barra");
+    if (input.tipoServicio !== "mesa" && input.mesaId) throw new BadRequestException(`mesaId must not be set when tipoServicio=${input.tipoServicio}`);
     if (input.tipoServicio === "mesa" && input.mesaId) await this.mesasService.assertMesaExists(input.mesaId, tenant);
+
+    if (input.tipoServicio === "delivery") {
+      const tienePlataforma = Boolean(input.plataforma);
+      const tieneDireccion = Boolean(input.direccionEnvio);
+      if (tienePlataforma === tieneDireccion) {
+        throw new BadRequestException("delivery requires exactly one of plataforma or direccionEnvio");
+      }
+    } else if (input.plataforma || input.direccionEnvio) {
+      throw new BadRequestException(`plataforma/direccionEnvio must not be set when tipoServicio=${input.tipoServicio}`);
+    }
 
     const platoIds = [...new Set(input.items.map((item) => item.platoId))];
     const platos = await this.prisma.plato.findMany({ where: { id: { in: platoIds }, ...tenant } });
@@ -46,6 +58,8 @@ export class PedidosService {
         data: {
           tipoServicio: input.tipoServicio,
           mesaId: input.mesaId ?? null,
+          plataforma: input.plataforma ?? null,
+          direccionEnvio: input.direccionEnvio ?? null,
           estado: "abierto",
           ...(input.clientRequestId ? { clientRequestId: input.clientRequestId } : {}),
           ...tenant,
@@ -80,7 +94,7 @@ export class PedidosService {
   async updateEstado(id: string, destino: EstadoPedido, tenant: TenantContext) {
     const pedido = await this.prisma.pedido.findFirst({ where: { id, ...tenant } });
     if (!pedido) throw new NotFoundException(`Pedido ${id} not found`);
-    assertTransicionValida(pedido.estado, destino);
+    assertTransicionValida(pedido, destino);
     const turno = destino === "cobrado" ? await this.cajaService.assertTurnoAbierto(tenant) : null;
     const { updated, mesa } = await this.prisma.$transaction(async (tx) => {
       const data = turno ? { estado: destino, turnoCajaId: turno.id } : { estado: destino };

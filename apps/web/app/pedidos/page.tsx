@@ -8,7 +8,7 @@ import {
   listMesas,
   listPedidos,
   listPlatos,
-  SIGUIENTE_ESTADO_PEDIDO,
+  siguienteEstadoPedido,
   type EstadoPedido,
   type Mesa,
   type Pedido,
@@ -31,6 +31,7 @@ const ESTADO_PEDIDO_TONE: Record<EstadoPedido, "neutral" | "info" | "success" | 
   enviado_a_cocina: "info",
   en_preparacion: "info",
   listo: "warning",
+  en_camino: "info",
   entregado: "brand",
   cobrado: "success",
   cerrado: "neutral",
@@ -41,17 +42,36 @@ const LABEL_ESTADO_PEDIDO: Record<EstadoPedido, string> = {
   enviado_a_cocina: "En cocina",
   en_preparacion: "En preparación",
   listo: "Listo",
+  en_camino: "En camino",
   entregado: "Entregado",
   cobrado: "Cobrado",
   cerrado: "Cerrado",
 };
 
+const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
+  mesa: "Mesa",
+  barra: "Barra",
+  takeaway: "Takeaway",
+  delivery: "Delivery",
+};
+
 type ItemFormRow = { platoId: string; cantidad: string };
+type ModoDelivery = "plataforma" | "propio";
 
 const ITEM_VACIO: ItemFormRow = { platoId: "", cantidad: "1" };
-const FORM_VACIO: { tipoServicio: TipoServicio; mesaId: string; items: ItemFormRow[] } = {
+const FORM_VACIO: {
+  tipoServicio: TipoServicio;
+  mesaId: string;
+  modoDelivery: ModoDelivery;
+  plataforma: string;
+  direccionEnvio: string;
+  items: ItemFormRow[];
+} = {
   tipoServicio: "mesa",
   mesaId: "",
+  modoDelivery: "plataforma",
+  plataforma: "",
+  direccionEnvio: "",
   items: [ITEM_VACIO],
 };
 
@@ -108,6 +128,8 @@ export default function PedidosPage() {
     const input = {
       tipoServicio: form.tipoServicio,
       ...(form.tipoServicio === "mesa" ? { mesaId: form.mesaId } : {}),
+      ...(form.tipoServicio === "delivery" && form.modoDelivery === "plataforma" ? { plataforma: form.plataforma } : {}),
+      ...(form.tipoServicio === "delivery" && form.modoDelivery === "propio" ? { direccionEnvio: form.direccionEnvio } : {}),
       items: form.items.map((item) => ({
         platoId: item.platoId,
         cantidad: Number.parseInt(item.cantidad, 10),
@@ -123,7 +145,7 @@ export default function PedidosPage() {
   }
 
   async function handleAvanzar(pedido: Pedido) {
-    const siguiente = SIGUIENTE_ESTADO_PEDIDO[pedido.estado];
+    const siguiente = siguienteEstadoPedido(pedido);
     if (!siguiente) return;
     setError(null);
     try {
@@ -158,12 +180,14 @@ export default function PedidosPage() {
             <select
               value={form.tipoServicio}
               onChange={(e) =>
-                setForm({ ...form, tipoServicio: e.target.value as TipoServicio, mesaId: "" })
+                setForm({ ...form, tipoServicio: e.target.value as TipoServicio, mesaId: "", plataforma: "", direccionEnvio: "" })
               }
               className={INPUT_CLASSES}
             >
               <option value="mesa">Mesa</option>
               <option value="barra">Barra</option>
+              <option value="takeaway">Takeaway</option>
+              <option value="delivery">Delivery</option>
             </select>
 
             {form.tipoServicio === "mesa" && (
@@ -180,6 +204,41 @@ export default function PedidosPage() {
                   </option>
                 ))}
               </select>
+            )}
+
+            {form.tipoServicio === "delivery" && (
+              <>
+                <select
+                  value={form.modoDelivery}
+                  onChange={(e) =>
+                    setForm({ ...form, modoDelivery: e.target.value as ModoDelivery, plataforma: "", direccionEnvio: "" })
+                  }
+                  className={INPUT_CLASSES}
+                >
+                  <option value="plataforma">Plataforma</option>
+                  <option value="propio">Delivery propio</option>
+                </select>
+
+                {form.modoDelivery === "plataforma" ? (
+                  <input
+                    type="text"
+                    placeholder="Plataforma (ej. PedidosYa)"
+                    value={form.plataforma}
+                    onChange={(e) => setForm({ ...form, plataforma: e.target.value })}
+                    required
+                    className={INPUT_CLASSES}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Dirección"
+                    value={form.direccionEnvio}
+                    onChange={(e) => setForm({ ...form, direccionEnvio: e.target.value })}
+                    required
+                    className={INPUT_CLASSES}
+                  />
+                )}
+              </>
             )}
           </div>
 
@@ -227,11 +286,11 @@ export default function PedidosPage() {
         <h2 className="font-serif text-lg font-semibold text-ink">Pedidos</h2>
         <div className="space-y-3">
           {pedidos.map((pedido) => {
-            const siguiente = SIGUIENTE_ESTADO_PEDIDO[pedido.estado];
+            const siguiente = siguienteEstadoPedido(pedido);
             return (
               <Card key={pedido.id}>
                 <div className="flex items-center justify-between">
-                  <span className="font-serif font-semibold capitalize text-ink">{pedido.tipoServicio}</span>
+                  <span className="font-serif font-semibold text-ink">{LABEL_TIPO_SERVICIO[pedido.tipoServicio]}</span>
                   <Badge tone={ESTADO_PEDIDO_TONE[pedido.estado]}>{LABEL_ESTADO_PEDIDO[pedido.estado]}</Badge>
                 </div>
                 <ul className="mt-2 space-y-1 text-sm text-muted">

@@ -119,6 +119,8 @@ describe("PedidosService", () => {
         data: {
           tipoServicio: "barra",
           mesaId: null,
+          plataforma: null,
+          direccionEnvio: null,
           estado: "abierto",
           clientRequestId: "req-2",
           ...TENANT,
@@ -150,6 +152,8 @@ describe("PedidosService", () => {
         data: {
           tipoServicio: "barra",
           mesaId: null,
+          plataforma: null,
+          direccionEnvio: null,
           estado: "abierto",
           ...TENANT,
           items: {
@@ -183,6 +187,186 @@ describe("PedidosService", () => {
         service.create({
           tipoServicio: "barra",
           mesaId: "mesa-1",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects tipoServicio=takeaway with a mesaId", async () => {
+      await expect(
+        service.create({
+          tipoServicio: "takeaway",
+          mesaId: "mesa-1",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects tipoServicio=delivery with a mesaId", async () => {
+      await expect(
+        service.create({
+          tipoServicio: "delivery",
+          mesaId: "mesa-1",
+          direccionEnvio: "Calle 123",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("creates normally with tipoServicio=takeaway and no mesaId/plataforma/direccionEnvio", async () => {
+      prisma.plato.findMany.mockResolvedValue([{ id: "plato-1", nombre: "Milanesa", precio: 1500 }]);
+      prisma.pedido.create.mockResolvedValue({
+        id: "pedido-1",
+        tipoServicio: "takeaway",
+        mesaId: null,
+        plataforma: null,
+        direccionEnvio: null,
+        estado: "abierto",
+        items: [],
+      });
+
+      await service.create({ tipoServicio: "takeaway", items: [{ platoId: "plato-1", cantidad: 1 }] }, TENANT);
+
+      expect(prisma.pedido.create).toHaveBeenCalledWith({
+        data: {
+          tipoServicio: "takeaway",
+          mesaId: null,
+          plataforma: null,
+          direccionEnvio: null,
+          estado: "abierto",
+          ...TENANT,
+          items: { create: [{ platoId: "plato-1", nombre: "Milanesa", precioUnitario: 1500, cantidad: 1 }] },
+        },
+        include: { items: true },
+      });
+    });
+
+    it("rejects tipoServicio=takeaway with plataforma set", async () => {
+      await expect(
+        service.create({
+          tipoServicio: "takeaway",
+          plataforma: "PedidosYa",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects tipoServicio=takeaway with direccionEnvio set", async () => {
+      await expect(
+        service.create({
+          tipoServicio: "takeaway",
+          direccionEnvio: "Calle 123",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects tipoServicio=mesa with plataforma set", async () => {
+      mesas.assertMesaExists.mockResolvedValue(undefined);
+      await expect(
+        service.create({
+          tipoServicio: "mesa",
+          mesaId: "mesa-1",
+          plataforma: "PedidosYa",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects tipoServicio=barra with direccionEnvio set", async () => {
+      await expect(
+        service.create({
+          tipoServicio: "barra",
+          direccionEnvio: "Calle 123",
+          items: [{ platoId: "plato-1", cantidad: 1 }],
+        }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("creates normally with tipoServicio=delivery and plataforma only", async () => {
+      prisma.plato.findMany.mockResolvedValue([{ id: "plato-1", nombre: "Milanesa", precio: 1500 }]);
+      prisma.pedido.create.mockResolvedValue({
+        id: "pedido-1",
+        tipoServicio: "delivery",
+        mesaId: null,
+        plataforma: "PedidosYa",
+        direccionEnvio: null,
+        estado: "abierto",
+        items: [],
+      });
+
+      await service.create({
+        tipoServicio: "delivery",
+        plataforma: "PedidosYa",
+        items: [{ platoId: "plato-1", cantidad: 1 }],
+      }, TENANT);
+
+      expect(prisma.pedido.create).toHaveBeenCalledWith({
+        data: {
+          tipoServicio: "delivery",
+          mesaId: null,
+          plataforma: "PedidosYa",
+          direccionEnvio: null,
+          estado: "abierto",
+          ...TENANT,
+          items: { create: [{ platoId: "plato-1", nombre: "Milanesa", precioUnitario: 1500, cantidad: 1 }] },
+        },
+        include: { items: true },
+      });
+    });
+
+    it("creates normally with tipoServicio=delivery and direccionEnvio only", async () => {
+      prisma.plato.findMany.mockResolvedValue([{ id: "plato-1", nombre: "Milanesa", precio: 1500 }]);
+      prisma.pedido.create.mockResolvedValue({
+        id: "pedido-1",
+        tipoServicio: "delivery",
+        mesaId: null,
+        plataforma: null,
+        direccionEnvio: "Calle 123",
+        estado: "abierto",
+        items: [],
+      });
+
+      await service.create({
+        tipoServicio: "delivery",
+        direccionEnvio: "Calle 123",
+        items: [{ platoId: "plato-1", cantidad: 1 }],
+      }, TENANT);
+
+      expect(prisma.pedido.create).toHaveBeenCalledWith({
+        data: {
+          tipoServicio: "delivery",
+          mesaId: null,
+          plataforma: null,
+          direccionEnvio: "Calle 123",
+          estado: "abierto",
+          ...TENANT,
+          items: { create: [{ platoId: "plato-1", nombre: "Milanesa", precioUnitario: 1500, cantidad: 1 }] },
+        },
+        include: { items: true },
+      });
+    });
+
+    it("rejects tipoServicio=delivery with neither plataforma nor direccionEnvio", async () => {
+      await expect(
+        service.create({ tipoServicio: "delivery", items: [{ platoId: "plato-1", cantidad: 1 }] }, TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.pedido.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects tipoServicio=delivery with both plataforma and direccionEnvio", async () => {
+      await expect(
+        service.create({
+          tipoServicio: "delivery",
+          plataforma: "PedidosYa",
+          direccionEnvio: "Calle 123",
           items: [{ platoId: "plato-1", cantidad: 1 }],
         }, TENANT),
       ).rejects.toBeInstanceOf(BadRequestException);

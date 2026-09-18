@@ -18,6 +18,8 @@ function pedidoOptimista(
     id: clientRequestId,
     tipoServicio: input.tipoServicio,
     mesaId: input.mesaId ?? null,
+    plataforma: input.plataforma ?? null,
+    direccionEnvio: input.direccionEnvio ?? null,
     estado: "abierto",
     clientRequestId,
     items: input.items.map((item, index) => {

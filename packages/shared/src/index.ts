@@ -29,13 +29,13 @@ export const mesaSchema = tenantSchema.extend({
   updatedAt: timestampSchema,
 });
 export type Mesa = z.infer<typeof mesaSchema>;
-export const tipoServicioSchema = z.enum(["mesa", "barra"]);
+export const tipoServicioSchema = z.enum(["mesa", "barra", "takeaway", "delivery"]);
 export type TipoServicio = z.infer<typeof tipoServicioSchema>;
-export const estadoPedidoSchema = z.enum(["abierto", "enviado_a_cocina", "en_preparacion", "listo", "entregado", "cobrado", "cerrado"]);
+export const estadoPedidoSchema = z.enum(["abierto", "enviado_a_cocina", "en_preparacion", "listo", "en_camino", "entregado", "cobrado", "cerrado"]);
 export type EstadoPedido = z.infer<typeof estadoPedidoSchema>;
 export const itemPedidoSchema = z.object({ id: z.string().uuid(), pedidoId: z.string().uuid(), platoId: z.string().uuid(), nombre: z.string(), precioUnitario: z.number().int(), cantidad: z.number().int().positive() });
 export type ItemPedido = z.infer<typeof itemPedidoSchema>;
-export const pedidoSchema = tenantSchema.extend({ id: z.string().uuid(), tipoServicio: tipoServicioSchema, mesaId: z.string().uuid().nullable(), estado: estadoPedidoSchema, items: z.array(itemPedidoSchema), clientRequestId: z.string().nullable().optional(), createdAt: timestampSchema, updatedAt: timestampSchema });
+export const pedidoSchema = tenantSchema.extend({ id: z.string().uuid(), tipoServicio: tipoServicioSchema, mesaId: z.string().uuid().nullable(), plataforma: z.string().nullable(), direccionEnvio: z.string().nullable(), estado: estadoPedidoSchema, items: z.array(itemPedidoSchema), clientRequestId: z.string().nullable().optional(), createdAt: timestampSchema, updatedAt: timestampSchema });
 export type Pedido = z.infer<typeof pedidoSchema>;
 export const estadoTurnoCajaSchema = z.enum(["abierto", "cerrado"]);
 export type EstadoTurnoCaja = z.infer<typeof estadoTurnoCajaSchema>;
@@ -87,15 +87,24 @@ export function posicionPorDefecto(index: number): { x: number; y: number } {
     y: Math.floor(index / columnas) * 18 + 12,
   };
 }
-export type CreatePedidoInput = { tipoServicio: TipoServicio; mesaId?: string; items: { platoId: string; cantidad: number }[]; clientRequestId?: string };
+export type CreatePedidoInput = { tipoServicio: TipoServicio; mesaId?: string; plataforma?: string; direccionEnvio?: string; items: { platoId: string; cantidad: number }[]; clientRequestId?: string };
 export type AbrirTurnoInput = { montoInicial: number };
 export type CerrarTurnoInput = { montoDeclarado: number };
 export type CreateMovimientoInput = { tipo: TipoMovimientoCaja; monto: number; descripcion: string };
 export interface ApiOptions { accessToken?: string; }
 
+// Static "what's next" chain for the client-side UX hint. Does not know about self-delivery
+// branching (listo -> en_camino) — the backend is the source of truth for valid transitions.
+// See siguienteEstadoPedido() for the pedido-aware version used by the caja UI.
 export const SIGUIENTE_ESTADO_PEDIDO: Record<EstadoPedido, EstadoPedido | null> = {
-  abierto: "enviado_a_cocina", enviado_a_cocina: "en_preparacion", en_preparacion: "listo", listo: "entregado", entregado: "cobrado", cobrado: "cerrado", cerrado: null,
+  abierto: "enviado_a_cocina", enviado_a_cocina: "en_preparacion", en_preparacion: "listo", listo: "entregado", en_camino: "entregado", entregado: "cobrado", cobrado: "cerrado", cerrado: null,
 };
+
+export function siguienteEstadoPedido(pedido: Pick<Pedido, "estado" | "tipoServicio" | "direccionEnvio">): EstadoPedido | null {
+  const esAutoDelivery = pedido.tipoServicio === "delivery" && pedido.direccionEnvio != null;
+  if (pedido.estado === "listo" && esAutoDelivery) return "en_camino";
+  return SIGUIENTE_ESTADO_PEDIDO[pedido.estado];
+}
 
 export function centavosToPesos(centavos: number): string {
   const negative = centavos < 0;

@@ -70,6 +70,8 @@ model Mesa {
 enum TipoServicio {
   mesa
   barra
+  takeaway
+  delivery
 }
 
 enum EstadoPedido {
@@ -77,6 +79,7 @@ enum EstadoPedido {
   enviado_a_cocina
   en_preparacion
   listo
+  en_camino
   entregado
   cobrado
   cerrado
@@ -87,6 +90,8 @@ model Pedido {
   tipoServicio    TipoServicio
   mesaId          String?
   mesa            Mesa?        @relation(fields: [mesaId], references: [id], onDelete: Restrict)
+  plataforma      String?
+  direccionEnvio  String?
   estado          EstadoPedido @default(abierto)
   items           ItemPedido[]
   clientRequestId String?      @unique

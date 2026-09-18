@@ -11,6 +11,14 @@ export class CreatePedidoDto {
   @IsUUID()
   mesaId?: string;
 
+  @IsOptional()
+  @IsString()
+  plataforma?: string;
+
+  @IsOptional()
+  @IsString()
+  direccionEnvio?: string;
+
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })

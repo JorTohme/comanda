@@ -27,6 +27,13 @@ const FORM_VACIO: { tipoServicio: TipoServicio; mesaId: string; items: ItemFormR
   items: [ITEM_VACIO],
 };
 
+const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
+  mesa: "Mesa",
+  barra: "Barra",
+  takeaway: "Takeaway",
+  delivery: "Delivery",
+};
+
 const LABEL_ESTADO_MESA: Record<Mesa["estado"], string> = {
   libre: "Libre",
   ocupada: "Ocupada",
@@ -38,6 +45,7 @@ const LABEL_ESTADO_PEDIDO: Record<Pedido["estado"], string> = {
   enviado_a_cocina: "En cocina",
   en_preparacion: "En preparación",
   listo: "Listo",
+  en_camino: "En camino",
   entregado: "Entregado",
   cobrado: "Cobrado",
   cerrado: "Cerrado",
@@ -251,7 +259,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
             {pedidos.map((pedido) => (
               <div key={pedido.id} className={`tarjeta-pedido estado-${pedido.estado}`}>
                 <div className="fila-superior">
-                  <span className="titulo">{pedido.tipoServicio === "mesa" ? "Mesa" : "Barra"}</span>
+                  <span className="titulo">{LABEL_TIPO_SERVICIO[pedido.tipoServicio]}</span>
                   <span className={`chip-estado estado-${pedido.estado}`}>{LABEL_ESTADO_PEDIDO[pedido.estado]}</span>
                 </div>
                 <div className="items">

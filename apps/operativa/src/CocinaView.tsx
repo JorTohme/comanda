@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
-import { avanzarEstadoPedido, connectRealtime, listPedidos, listPlatos, updatePlato, type AuthSession, type Pedido, type Plato } from "@comanda/shared";
+import { avanzarEstadoPedido, connectRealtime, listPedidos, listPlatos, updatePlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
 import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
 import { getDb } from "./db/schema";
 import { useRxData } from "./db/useRxData";
+
+const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
+  mesa: "Mesa",
+  barra: "Barra",
+  takeaway: "Takeaway",
+  delivery: "Delivery",
+};
 
 export function CocinaView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
   const pedidos = useRxData<Pedido>("pedidos");
@@ -159,7 +166,7 @@ function PedidoResumen({ pedido }: { pedido: Pedido }) {
   return (
     <div>
       <div className="fila-superior">
-        <span className="mesa-nombre">{pedido.tipoServicio === "mesa" ? "Mesa" : "Barra"}</span>
+        <span className="mesa-nombre">{LABEL_TIPO_SERVICIO[pedido.tipoServicio]}</span>
       </div>
       <ul className="items">
         {pedido.items.map((item) => (
