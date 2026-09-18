@@ -1,4 +1,4 @@
-import { categoriaSchema, centavosToPesos, pesosToCentavos, posicionPorDefecto } from "./index";
+import { categoriaSchema, centavosToPesos, listCategorias, pesosToCentavos, posicionPorDefecto, setSessionExpiredHandler } from "./index";
 
 describe("centavosToPesos", () => {
   it("formats whole pesos with two decimals", () => {
@@ -69,5 +69,89 @@ describe("runtime contracts", () => {
         updatedAt: "2026-09-15T00:00:00.000Z",
       }),
     ).toThrow();
+  });
+});
+
+function fakeResponse(status: number, body?: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => (body === undefined ? "" : JSON.stringify(body)),
+  } as Response;
+}
+
+function fakeStorage(initial: Record<string, string> = {}) {
+  const store = { ...initial };
+  return {
+    getItem: jest.fn((key: string) => store[key] ?? null),
+    setItem: jest.fn((key: string, value: string) => {
+      store[key] = value;
+    }),
+    removeItem: jest.fn((key: string) => {
+      delete store[key];
+    }),
+  };
+}
+
+const NEW_SESSION = {
+  accessToken: "new-access-token",
+  refreshToken: "new-refresh-token",
+  user: {
+    id: "00000000-0000-0000-0000-000000000001",
+    nombre: "Ana",
+    email: "ana@test.com",
+    rol: "admin",
+    orgId: "00000000-0000-0000-0000-000000000011",
+    sucursalId: "00000000-0000-0000-0000-000000000012",
+  },
+};
+
+describe("apiFetch 401 retry (via listCategorias)", () => {
+  const originalFetch = global.fetch;
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
+    setSessionExpiredHandler(() => {});
+  });
+
+  it("refreshes the session once on 401, updates storage, and retries the original request", async () => {
+    const storage = fakeStorage({ "comanda.accessToken": "old-token", "comanda.refreshToken": "old-refresh" });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(fakeResponse(401))
+      .mockResolvedValueOnce(fakeResponse(200, NEW_SESSION))
+      .mockResolvedValueOnce(fakeResponse(200, []));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await listCategorias("http://api.test");
+
+    expect(result).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][0]).toBe("http://api.test/auth/refresh");
+    expect(storage.setItem).toHaveBeenCalledWith("comanda.accessToken", "new-access-token");
+    expect(storage.setItem).toHaveBeenCalledWith("comanda.refreshToken", "new-refresh-token");
+  });
+
+  it("clears storage and notifies the session-expired handler when the refresh call itself fails", async () => {
+    const storage = fakeStorage({ "comanda.accessToken": "old-token", "comanda.refreshToken": "old-refresh" });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    const handler = jest.fn();
+    setSessionExpiredHandler(handler);
+
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(fakeResponse(401))
+      .mockResolvedValueOnce(fakeResponse(401));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(listCategorias("http://api.test")).rejects.toThrow();
+
+    expect(storage.removeItem).toHaveBeenCalledWith("comanda.accessToken");
+    expect(storage.removeItem).toHaveBeenCalledWith("comanda.refreshToken");
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

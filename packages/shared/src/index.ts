@@ -120,10 +120,17 @@ export function pesosToCentavos(pesos: string): number {
   return negative ? -total : total;
 }
 
+function readLocalStorage(): { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void } | undefined {
+  return (globalThis as { localStorage?: ReturnType<typeof readLocalStorage> }).localStorage;
+}
+
 function accessToken(options?: ApiOptions): string | undefined {
   if (options?.accessToken) return options.accessToken;
-  const storage = (globalThis as { localStorage?: { getItem(key: string): string | null } }).localStorage;
-  return storage?.getItem("comanda.accessToken") ?? undefined;
+  return readLocalStorage()?.getItem("comanda.accessToken") ?? undefined;
+}
+
+function storedRefreshToken(): string | undefined {
+  return readLocalStorage()?.getItem("comanda.refreshToken") ?? undefined;
 }
 
 function headers(options?: ApiOptions, json = false): Record<string, string> {
@@ -141,31 +148,70 @@ async function throwIfNotOk(res: Response, method: string, url: string): Promise
   if (!res.ok) throw new Error(`Request failed: ${method} ${url} (${res.status})`);
 }
 
+let sessionExpiredHandler: (() => void) | undefined;
+
+export function setSessionExpiredHandler(handler: () => void): void {
+  sessionExpiredHandler = handler;
+}
+
+function clearSessionAndNotify(): void {
+  const storage = readLocalStorage();
+  storage?.removeItem("comanda.accessToken");
+  storage?.removeItem("comanda.refreshToken");
+  sessionExpiredHandler?.();
+}
+
+// Single-retry 401 interceptor: relies on the module-level stored tokens, so it only
+// engages when the caller didn't bring their own accessToken (those manage their own lifecycle).
+async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): Promise<Response> {
+  const res = await fetch(url, { ...init, headers: headers(options) });
+  if (res.status !== 401 || options?.accessToken) return res;
+
+  const refresh = storedRefreshToken();
+  if (!refresh) {
+    clearSessionAndNotify();
+    return res;
+  }
+
+  try {
+    const session = await refreshSession(new URL(url).origin, refresh);
+    const storage = readLocalStorage();
+    storage?.setItem("comanda.accessToken", session.accessToken);
+    storage?.setItem("comanda.refreshToken", session.refreshToken);
+    const retry = await fetch(url, { ...init, headers: headers(options) });
+    if (retry.status === 401) clearSessionAndNotify();
+    return retry;
+  } catch (err) {
+    clearSessionAndNotify();
+    throw err;
+  }
+}
+
 export async function pingApi(baseUrl: string): Promise<HealthStatus> { const url = `${baseUrl}/health`; return parseJsonOrThrow(await fetch(url), healthStatusSchema, "GET", url); }
-export async function listCategorias(baseUrl: string, options?: ApiOptions): Promise<Categoria[]> { const url = `${baseUrl}/categorias`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), z.array(categoriaSchema), "GET", url); }
-export async function createCategoria(baseUrl: string, input: CreateCategoriaInput, options?: ApiOptions): Promise<Categoria> { const url = `${baseUrl}/categorias`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), categoriaSchema, "POST", url); }
-export async function updateCategoria(baseUrl: string, id: string, input: UpdateCategoriaInput, options?: ApiOptions): Promise<Categoria> { const url = `${baseUrl}/categorias/${id}`; return parseJsonOrThrow(await fetch(url, { method: "PATCH", headers: headers(options, true), body: JSON.stringify(input) }), categoriaSchema, "PATCH", url); }
-export async function deleteCategoria(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/categorias/${id}`; return throwIfNotOk(await fetch(url, { method: "DELETE", headers: headers(options) }), "DELETE", url); }
-export async function listPlatos(baseUrl: string, categoriaId?: string, options?: ApiOptions): Promise<Plato[]> { const url = categoriaId ? `${baseUrl}/platos?categoriaId=${encodeURIComponent(categoriaId)}` : `${baseUrl}/platos`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), z.array(platoSchema), "GET", url); }
-export async function createPlato(baseUrl: string, input: CreatePlatoInput, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), platoSchema, "POST", url); }
-export async function updatePlato(baseUrl: string, id: string, input: UpdatePlatoInput, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos/${id}`; return parseJsonOrThrow(await fetch(url, { method: "PATCH", headers: headers(options, true), body: JSON.stringify(input) }), platoSchema, "PATCH", url); }
-export async function deletePlato(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/platos/${id}`; return throwIfNotOk(await fetch(url, { method: "DELETE", headers: headers(options) }), "DELETE", url); }
-export async function listMesas(baseUrl: string, options?: ApiOptions): Promise<Mesa[]> { const url = `${baseUrl}/mesas`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), z.array(mesaSchema), "GET", url); }
-export async function createMesa(baseUrl: string, input: CreateMesaInput, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), mesaSchema, "POST", url); }
-export async function updateMesa(baseUrl: string, id: string, input: UpdateMesaInput, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas/${id}`; return parseJsonOrThrow(await fetch(url, { method: "PATCH", headers: headers(options, true), body: JSON.stringify(input) }), mesaSchema, "PATCH", url); }
-export async function deleteMesa(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/mesas/${id}`; return throwIfNotOk(await fetch(url, { method: "DELETE", headers: headers(options) }), "DELETE", url); }
-export async function listPedidos(baseUrl: string, options?: ApiOptions): Promise<Pedido[]> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), z.array(pedidoSchema), "GET", url); }
-export async function createPedido(baseUrl: string, input: CreatePedidoInput, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), pedidoSchema, "POST", url); }
-export async function avanzarEstadoPedido(baseUrl: string, id: string, estado: EstadoPedido, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos/${id}/estado`; return parseJsonOrThrow(await fetch(url, { method: "PATCH", headers: headers(options, true), body: JSON.stringify({ estado }) }), pedidoSchema, "PATCH", url); }
-export async function abrirTurno(baseUrl: string, input: AbrirTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), turnoCajaSchema, "POST", url); }
-export async function obtenerTurnoActual(baseUrl: string, options?: ApiOptions): Promise<TurnoCajaDetalle | null> { const url = `${baseUrl}/caja/turnos/actual`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), turnoCajaDetalleSchema.nullable(), "GET", url); }
-export async function listTurnos(baseUrl: string, options?: ApiOptions): Promise<TurnoCaja[]> { const url = `${baseUrl}/caja/turnos`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), z.array(turnoCajaSchema), "GET", url); }
-export async function obtenerTurno(baseUrl: string, id: string, options?: ApiOptions): Promise<TurnoCajaDetalle> { const url = `${baseUrl}/caja/turnos/${id}`; return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), turnoCajaDetalleSchema, "GET", url); }
-export async function registrarMovimiento(baseUrl: string, turnoId: string, input: CreateMovimientoInput, options?: ApiOptions): Promise<MovimientoCaja> { const url = `${baseUrl}/caja/turnos/${turnoId}/movimientos`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify(input) }), movimientoCajaSchema, "POST", url); }
-export async function cerrarTurno(baseUrl: string, id: string, input: CerrarTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos/${id}/cerrar`; return parseJsonOrThrow(await fetch(url, { method: "PATCH", headers: headers(options, true), body: JSON.stringify(input) }), turnoCajaSchema, "PATCH", url); }
+export async function listCategorias(baseUrl: string, options?: ApiOptions): Promise<Categoria[]> { const url = `${baseUrl}/categorias`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(categoriaSchema), "GET", url); }
+export async function createCategoria(baseUrl: string, input: CreateCategoriaInput, options?: ApiOptions): Promise<Categoria> { const url = `${baseUrl}/categorias`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), categoriaSchema, "POST", url); }
+export async function updateCategoria(baseUrl: string, id: string, input: UpdateCategoriaInput, options?: ApiOptions): Promise<Categoria> { const url = `${baseUrl}/categorias/${id}`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), categoriaSchema, "PATCH", url); }
+export async function deleteCategoria(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/categorias/${id}`; return throwIfNotOk(await apiFetch(url, { method: "DELETE" }, options), "DELETE", url); }
+export async function listPlatos(baseUrl: string, categoriaId?: string, options?: ApiOptions): Promise<Plato[]> { const url = categoriaId ? `${baseUrl}/platos?categoriaId=${encodeURIComponent(categoriaId)}` : `${baseUrl}/platos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(platoSchema), "GET", url); }
+export async function createPlato(baseUrl: string, input: CreatePlatoInput, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), platoSchema, "POST", url); }
+export async function updatePlato(baseUrl: string, id: string, input: UpdatePlatoInput, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos/${id}`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), platoSchema, "PATCH", url); }
+export async function deletePlato(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/platos/${id}`; return throwIfNotOk(await apiFetch(url, { method: "DELETE" }, options), "DELETE", url); }
+export async function listMesas(baseUrl: string, options?: ApiOptions): Promise<Mesa[]> { const url = `${baseUrl}/mesas`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(mesaSchema), "GET", url); }
+export async function createMesa(baseUrl: string, input: CreateMesaInput, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), mesaSchema, "POST", url); }
+export async function updateMesa(baseUrl: string, id: string, input: UpdateMesaInput, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas/${id}`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), mesaSchema, "PATCH", url); }
+export async function deleteMesa(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/mesas/${id}`; return throwIfNotOk(await apiFetch(url, { method: "DELETE" }, options), "DELETE", url); }
+export async function listPedidos(baseUrl: string, options?: ApiOptions): Promise<Pedido[]> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(pedidoSchema), "GET", url); }
+export async function createPedido(baseUrl: string, input: CreatePedidoInput, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), pedidoSchema, "POST", url); }
+export async function avanzarEstadoPedido(baseUrl: string, id: string, estado: EstadoPedido, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos/${id}/estado`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify({ estado }) }, options), pedidoSchema, "PATCH", url); }
+export async function abrirTurno(baseUrl: string, input: AbrirTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), turnoCajaSchema, "POST", url); }
+export async function obtenerTurnoActual(baseUrl: string, options?: ApiOptions): Promise<TurnoCajaDetalle | null> { const url = `${baseUrl}/caja/turnos/actual`; return parseJsonOrThrow(await apiFetch(url, {}, options), turnoCajaDetalleSchema.nullable(), "GET", url); }
+export async function listTurnos(baseUrl: string, options?: ApiOptions): Promise<TurnoCaja[]> { const url = `${baseUrl}/caja/turnos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(turnoCajaSchema), "GET", url); }
+export async function obtenerTurno(baseUrl: string, id: string, options?: ApiOptions): Promise<TurnoCajaDetalle> { const url = `${baseUrl}/caja/turnos/${id}`; return parseJsonOrThrow(await apiFetch(url, {}, options), turnoCajaDetalleSchema, "GET", url); }
+export async function registrarMovimiento(baseUrl: string, turnoId: string, input: CreateMovimientoInput, options?: ApiOptions): Promise<MovimientoCaja> { const url = `${baseUrl}/caja/turnos/${turnoId}/movimientos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), movimientoCajaSchema, "POST", url); }
+export async function cerrarTurno(baseUrl: string, id: string, input: CerrarTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos/${id}/cerrar`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), turnoCajaSchema, "PATCH", url); }
 
 const preferenciaPagoSchema = z.object({ initPoint: z.string(), preferenceId: z.string() });
-export async function crearPreferenciaPago(baseUrl: string, pedidoId: string, options?: ApiOptions): Promise<{ initPoint: string; preferenceId: string }> { const url = `${baseUrl}/pagos/preferencia`; return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(options, true), body: JSON.stringify({ pedidoId }) }), preferenciaPagoSchema, "POST", url); }
+export async function crearPreferenciaPago(baseUrl: string, pedidoId: string, options?: ApiOptions): Promise<{ initPoint: string; preferenceId: string }> { const url = `${baseUrl}/pagos/preferencia`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify({ pedidoId }) }, options), preferenciaPagoSchema, "POST", url); }
 
 export const ventaDiariaSchema = z.object({ fecha: z.string(), total: z.number().int() });
 export type VentaDiaria = z.infer<typeof ventaDiariaSchema>;
@@ -181,13 +227,14 @@ export const reportesSchema = z.object({
 export type Reportes = z.infer<typeof reportesSchema>;
 export async function obtenerReportes(baseUrl: string, desde: string, hasta: string, options?: ApiOptions): Promise<Reportes> {
   const url = `${baseUrl}/reportes?desde=${desde}&hasta=${hasta}`;
-  return parseJsonOrThrow(await fetch(url, { headers: headers(options) }), reportesSchema, "GET", url);
+  return parseJsonOrThrow(await apiFetch(url, {}, options), reportesSchema, "GET", url);
 }
 
 export const rolUsuarioSchema = z.enum(["admin", "caja", "mozo", "cocina"]);
 export type RolUsuario = z.infer<typeof rolUsuarioSchema>;
 export const authSessionSchema = z.object({
   accessToken: z.string().min(1),
+  refreshToken: z.string().min(1),
   user: tenantSchema.extend({ id: z.string().uuid(), nombre: z.string(), email: z.string().email(), rol: rolUsuarioSchema }),
 });
 export type AuthSession = z.infer<typeof authSessionSchema>;
@@ -198,6 +245,14 @@ export async function login(baseUrl: string, input: { email: string; password: s
 export async function register(baseUrl: string, input: { organizacionNombre: string; sucursalNombre: string; nombre: string; email: string; password: string; rol?: RolUsuario }): Promise<AuthSession> {
   const url = `${baseUrl}/auth/register`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
+}
+export async function refreshSession(baseUrl: string, refreshToken: string): Promise<AuthSession> {
+  const url = `${baseUrl}/auth/refresh`;
+  return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken }) }), authSessionSchema, "POST", url);
+}
+export async function logout(baseUrl: string, refreshToken: string): Promise<void> {
+  const url = `${baseUrl}/auth/logout`;
+  return throwIfNotOk(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken }) }), "POST", url);
 }
 
 export type { Socket };

@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import type { RolUsuario } from "@prisma/client";
 
@@ -96,4 +96,14 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const derived = (await scrypt(password, salt, 64)) as Buffer;
   const expected = Buffer.from(hash, "base64url");
   return expected.length === derived.length && timingSafeEqual(expected, derived);
+}
+
+// Refresh tokens are high-entropy random secrets (not low-entropy human input like passwords),
+// so a fast deterministic hash is enough for storage/lookup — no need for scrypt's slow KDF.
+export function generateRefreshToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function hashRefreshToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }

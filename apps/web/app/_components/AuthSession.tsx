@@ -1,9 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { login } from "@comanda/shared";
+import { login, logout, setSessionExpiredHandler } from "@comanda/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+function clearSession() {
+  window.localStorage.removeItem("comanda.accessToken");
+  window.localStorage.removeItem("comanda.refreshToken");
+  window.location.reload();
+}
 
 export function AuthSession() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -12,6 +18,7 @@ export function AuthSession() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => setAuthenticated(Boolean(window.localStorage.getItem("comanda.accessToken"))), []);
+  useEffect(() => setSessionExpiredHandler(clearSession), []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -19,6 +26,7 @@ export function AuthSession() {
     try {
       const session = await login(API_URL, { email, password });
       window.localStorage.setItem("comanda.accessToken", session.accessToken);
+      window.localStorage.setItem("comanda.refreshToken", session.refreshToken);
       window.location.reload();
     } catch {
       setError("No se pudo iniciar sesión.");
@@ -31,8 +39,9 @@ export function AuthSession() {
         type="button"
         className="text-sm font-medium text-muted hover:text-ink"
         onClick={() => {
-          window.localStorage.removeItem("comanda.accessToken");
-          window.location.reload();
+          const refreshToken = window.localStorage.getItem("comanda.refreshToken");
+          const done = refreshToken ? logout(API_URL, refreshToken).catch(() => {}) : Promise.resolve();
+          done.finally(clearSession);
         }}
       >
         Cerrar sesión
