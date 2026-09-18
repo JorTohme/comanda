@@ -10,7 +10,8 @@ import { PedidosService } from "./pedidos.service";
 @Controller("pedidos")
 export class PedidosController {
   constructor(@Inject(PedidosService) private readonly pedidosService: PedidosService) {}
-  @Roles(RolUsuario.admin, RolUsuario.mozo) @Post() create(@Body() dto: CreatePedidoDto, @CurrentUser() user: TenantContext) { return this.pedidosService.create(dto, user); }
+  // caja: permite tomar un pedido desde la PC (mostrador/teléfono) sin depender de la app del mozo.
+  @Roles(RolUsuario.admin, RolUsuario.mozo, RolUsuario.caja) @Post() create(@Body() dto: CreatePedidoDto, @CurrentUser() user: TenantContext) { return this.pedidosService.create(dto, user); }
   @Get() findAll(@CurrentUser() user: TenantContext) { return this.pedidosService.findAll(user); }
   @Get(":id") findOne(@Param("id") id: string, @CurrentUser() user: TenantContext) { return this.pedidosService.findOne(id, user); }
   @Patch(":id/estado") updateEstado(@Param("id") id: string, @Body() dto: UpdateEstadoPedidoDto, @CurrentUser() user: TenantContext) { return this.pedidosService.updateEstado(id, dto.estado, user); }
