@@ -188,7 +188,7 @@ function decodeJwtPayload(token: string): { sucursalId?: string } | null {
 // Single-retry 401 interceptor: relies on the module-level stored tokens, so it only
 // engages when the caller didn't bring their own accessToken (those manage their own lifecycle).
 async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): Promise<Response> {
-  const res = await fetch(url, { ...init, headers: headers(options) });
+  const res = await fetch(url, { ...init, headers: headers(options, Boolean(init.body)) });
   if (res.status !== 401 || options?.accessToken) return res;
 
   const refresh = storedRefreshToken();
@@ -205,7 +205,7 @@ async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): P
     storage?.setItem("comanda.accessToken", session.accessToken);
     storage?.setItem("comanda.refreshToken", session.refreshToken);
     storage?.setItem("comanda.user", JSON.stringify(session.user));
-    const retry = await fetch(url, { ...init, headers: headers(options) });
+    const retry = await fetch(url, { ...init, headers: headers(options, Boolean(init.body)) });
     if (retry.status === 401) clearSessionAndNotify();
     return retry;
   } catch (err) {

@@ -1,6 +1,7 @@
 import {
   categoriaSchema,
   centavosToPesos,
+  createCategoria,
   listCategorias,
   pesosToCentavos,
   posicionPorDefecto,
@@ -184,6 +185,26 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     });
     const userCall = storage.setItem.mock.calls.find(([key]) => key === "comanda.user");
     expect(userCall && JSON.parse(userCall[1])).toEqual(NEW_SESSION.user);
+  });
+
+  it("sends Content-Type: application/json on a write request (regression: apiFetch dropped this on the initial call)", async () => {
+    const storage = fakeStorage({ "comanda.accessToken": "token", "comanda.refreshToken": "refresh" });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, {
+      id: "00000000-0000-0000-0000-000000000001",
+      nombre: "Bebidas",
+      orgId: "00000000-0000-0000-0000-000000000011",
+      sucursalId: "00000000-0000-0000-0000-000000000012",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await createCategoria("http://api.test", { nombre: "Bebidas" });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
   });
 });
 
