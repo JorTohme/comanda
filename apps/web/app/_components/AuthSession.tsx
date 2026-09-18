@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { login, logout, setSessionExpiredHandler } from "@comanda/shared";
+import { useAuthenticated } from "./useAuthenticated";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -13,12 +14,11 @@ function clearSession() {
 }
 
 export function AuthSession() {
-  const [authenticated, setAuthenticated] = useState(false);
+  const authState = useAuthenticated();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => setAuthenticated(Boolean(window.localStorage.getItem("comanda.accessToken"))), []);
   useEffect(() => setSessionExpiredHandler(clearSession), []);
 
   async function submit(event: FormEvent) {
@@ -35,7 +35,9 @@ export function AuthSession() {
     }
   }
 
-  if (authenticated)
+  if (authState === "unknown") return null;
+
+  if (authState === "authenticated")
     return (
       <button
         type="button"

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { listSucursales, switchSucursal, type Sucursal } from "@comanda/shared";
+import { useAuthenticated } from "./useAuthenticated";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-function currentUser(): { rol: string } | null {
+function currentUser(): { rol: string; sucursalId?: string } | null {
   try {
     const raw = window.localStorage.getItem("comanda.user");
     return raw ? JSON.parse(raw) : null;
@@ -15,22 +16,21 @@ function currentUser(): { rol: string } | null {
 }
 
 export function SucursalSwitcher() {
+  const authState = useAuthenticated();
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [currentSucursalId, setCurrentSucursalId] = useState("");
 
   useEffect(() => {
+    // Wait for a confirmed token, not just a stored rol: a stale comanda.user surviving
+    // an invalid/expired token would otherwise fire this fetch and guarantee a 401.
+    if (authState !== "authenticated") return;
     const user = currentUser();
     if (user?.rol !== "admin") return;
     listSucursales(API_URL)
       .then(setSucursales)
       .catch(() => {});
-    try {
-      const sucursalId = (JSON.parse(window.localStorage.getItem("comanda.user") ?? "null") as { sucursalId?: string } | null)?.sucursalId;
-      if (sucursalId) setCurrentSucursalId(sucursalId);
-    } catch {
-      // ignore malformed local storage
-    }
-  }, []);
+    if (user.sucursalId) setCurrentSucursalId(user.sucursalId);
+  }, [authState]);
 
   if (sucursales.length <= 1) return null;
 
