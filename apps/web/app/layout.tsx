@@ -1,4 +1,5 @@
 import "./globals.css";
+import { AuthGate } from "./_components/AuthGate";
 import { AuthSession } from "./_components/AuthSession";
 import { NavLinks } from "./_components/NavLinks";
 import { SucursalSwitcher } from "./_components/SucursalSwitcher";
@@ -22,7 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-5xl p-6">{children}</main>
+        <main className="mx-auto max-w-5xl p-6">
+          <AuthGate>{children}</AuthGate>
+        </main>
       </body>
     </html>
   );
