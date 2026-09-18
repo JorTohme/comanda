@@ -101,10 +101,18 @@ const outboxSchema: RxJsonSchema<OutboxEntry> = {
 };
 
 let dbPromise: Promise<RxDatabase> | null = null;
+let cachedOrgId: string | null = null;
 
-export function getDb(): Promise<RxDatabase> {
+// Named per organizacion so a device that ever logs into more than one org (shared/test
+// browser, or a same-tab account switch with no reload) never mixes their offline data —
+// each org gets its own IndexedDB store instead of silently reusing whichever one was
+// cached first. Never deletes anything: switching org just starts a fresh, separate store.
+export function getDb(orgId: string): Promise<RxDatabase> {
+  if (dbPromise && cachedOrgId !== orgId) dbPromise = null;
+  cachedOrgId = orgId;
+
   if (!dbPromise) {
-    dbPromise = createRxDatabase({ name: "comanda-operativa", storage: getRxStorageDexie() }).then(async (db) => {
+    dbPromise = createRxDatabase({ name: `comanda-operativa-${orgId}`, storage: getRxStorageDexie() }).then(async (db) => {
       await db.addCollections({
         // ponytail: campos nuevos son todos opcionales, alcanza con devolver el doc tal cual — sube a v2 con su propia estrategia si algún campo futuro deja de serlo
         mesas: { schema: mesaSchema, migrationStrategies: { 1: (oldDoc: unknown) => oldDoc } },

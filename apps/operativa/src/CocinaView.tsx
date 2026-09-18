@@ -13,15 +13,15 @@ const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
 };
 
 export function CocinaView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
-  const pedidos = useRxData<Pedido>("pedidos");
-  const platos = useRxData<Plato>("platos");
+  const pedidos = useRxData<Pedido>("pedidos", session.user.orgId);
+  const platos = useRxData<Plato>("platos", session.user.orgId);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
   function cargarDatos() {
     return Promise.all([listPedidos(API_URL), listPlatos(API_URL)])
       .then(async ([pedidosRes, platosRes]) => {
-        const db = await getDb();
+        const db = await getDb(session.user.orgId);
         await Promise.all([
           ...pedidosRes.map((pedido) => db.collections.pedidos.upsert(pedido)),
           ...platosRes.map((plato) => db.collections.platos.upsert(plato)),
@@ -35,11 +35,11 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
 
     const socket = connectRealtime(API_URL, session.accessToken);
     socket.on("pedido.actualizado", async (pedido: Pedido) => {
-      const db = await getDb();
+      const db = await getDb(session.user.orgId);
       await db.collections.pedidos.upsert(pedido);
     });
     socket.on("plato.actualizado", async (plato: Plato) => {
-      const db = await getDb();
+      const db = await getDb(session.user.orgId);
       await db.collections.platos.upsert(plato);
     });
     return () => {
@@ -51,7 +51,7 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
     setError(null);
     try {
       const actualizado = await avanzarEstadoPedido(API_URL, pedidoId, estado);
-      const db = await getDb();
+      const db = await getDb(session.user.orgId);
       await db.collections.pedidos.upsert(actualizado);
     } catch (err) {
       setError(mensajeDeError(err));
@@ -60,7 +60,7 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
 
   async function handleToggleDisponible(plato: Plato) {
     setError(null);
-    const db = await getDb();
+    const db = await getDb(session.user.orgId);
     await db.collections.platos.upsert({ ...plato, disponible: !plato.disponible });
     try {
       const actualizado = await updatePlato(API_URL, plato.id, { disponible: !plato.disponible });

@@ -41,7 +41,7 @@ function pedidoOptimista(
 }
 
 export async function crearPedidoOffline(input: CreatePedidoInput, tenant: Tenant, apiUrl: string): Promise<void> {
-  const db = await getDb();
+  const db = await getDb(tenant.orgId);
   const clientRequestId = crypto.randomUUID();
   const platos = (await db.collections.platos.find().exec()).map((doc: { toJSON(): { id: string; nombre: string; precio: number } }) => doc.toJSON());
   const optimista = pedidoOptimista(clientRequestId, input, platos, tenant);
@@ -53,11 +53,11 @@ export async function crearPedidoOffline(input: CreatePedidoInput, tenant: Tenan
     createdAt: optimista.createdAt,
   });
 
-  await flushOutbox(apiUrl);
+  await flushOutbox(apiUrl, tenant.orgId);
 }
 
-export async function flushOutbox(apiUrl: string): Promise<void> {
-  const db = await getDb();
+export async function flushOutbox(apiUrl: string, orgId: string): Promise<void> {
+  const db = await getDb(orgId);
   const entradas = await db.collections.outbox.find().exec();
 
   for (const entrada of entradas) {
@@ -80,9 +80,9 @@ export async function flushOutbox(apiUrl: string): Promise<void> {
   }
 }
 
-export function setupAutoSync(apiUrl: string, onError?: (err: unknown) => void): () => void {
+export function setupAutoSync(apiUrl: string, orgId: string, onError?: (err: unknown) => void): () => void {
   const handler = () => {
-    flushOutbox(apiUrl).catch((err: unknown) => onError?.(err));
+    flushOutbox(apiUrl, orgId).catch((err: unknown) => onError?.(err));
   };
   window.addEventListener("online", handler);
   handler();
