@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,11 +12,25 @@ const LINKS = [
   { href: "/reportes", label: "Reportes" },
 ];
 
+const ADMIN_LINKS = [{ href: "/sucursales", label: "Sucursales" }];
+
+function isAdmin(): boolean {
+  try {
+    const raw = window.localStorage.getItem("comanda.user");
+    return raw ? (JSON.parse(raw) as { rol?: string }).rol === "admin" : false;
+  } catch {
+    return false;
+  }
+}
+
 export function NavLinks() {
   const pathname = usePathname();
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => setAdmin(isAdmin()), []);
+  const links = admin ? [...LINKS, ...ADMIN_LINKS] : LINKS;
   return (
     <nav className="flex gap-1">
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active = pathname === link.href;
         return (
           <Link

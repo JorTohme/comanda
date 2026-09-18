@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtService, generateRefreshToken, hashPassword, hashRefreshToken, verifyPassword } from "./jwt.service";
 import { RegisterDto } from "./dto/register.dto";
@@ -51,7 +51,7 @@ export class AuthService {
     return this.session(user);
   }
 
-  async refresh(rawToken: string) {
+  async refresh(rawToken: string, sucursalIdHint?: string) {
     const tokenHash = hashRefreshToken(rawToken);
     const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
     if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
@@ -60,7 +60,36 @@ export class AuthService {
     const user = await this.prisma.usuario.findUnique({ where: { id: existing.usuarioId } });
     if (!user) throw new UnauthorizedException("Invalid or expired refresh token");
     await this.prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
-    return this.session(user);
+    const sucursalId = await this.resolveSucursalId(user.organizacionId, user.sucursalId, sucursalIdHint);
+    return this.session(user, sucursalId);
+  }
+
+  // Explicit admin action: an unknown/foreign sucursalId is a real error here, not a hint to
+  // silently ignore.
+  async switchSucursal(usuarioId: string, callerOrgId: string, targetSucursalId: string) {
+    const target = await this.prisma.sucursal.findFirst({
+      where: { id: targetSucursalId, organizacionId: callerOrgId },
+      select: { id: true },
+    });
+    if (!target) throw new NotFoundException(`Sucursal ${targetSucursalId} not found`);
+    const user = await this.prisma.usuario.findUnique({ where: { id: usuarioId } });
+    if (!user) throw new UnauthorizedException("Invalid user");
+    return this.session(user, target.id);
+  }
+
+  // Best-effort hint resolution used by refresh(): never throws, falls back to the caller's
+  // home sucursal when the candidate doesn't exist or belongs to another org.
+  private async resolveSucursalId(
+    homeOrgId: string,
+    homeSucursalId: string,
+    candidateSucursalId?: string,
+  ): Promise<string> {
+    if (!candidateSucursalId) return homeSucursalId;
+    const candidate = await this.prisma.sucursal.findFirst({
+      where: { id: candidateSucursalId, organizacionId: homeOrgId },
+      select: { id: true },
+    });
+    return candidate ? candidate.id : homeSucursalId;
   }
 
   async logout(rawToken: string): Promise<void> {
@@ -72,14 +101,17 @@ export class AuthService {
     }
   }
 
-  private async session(user: {
-    id: string;
-    nombre: string;
-    email: string;
-    rol: "admin" | "caja" | "mozo" | "cocina";
-    organizacionId: string;
-    sucursalId: string;
-  }) {
+  private async session(
+    user: {
+      id: string;
+      nombre: string;
+      email: string;
+      rol: "admin" | "caja" | "mozo" | "cocina";
+      organizacionId: string;
+      sucursalId: string;
+    },
+    sucursalId: string = user.sucursalId,
+  ) {
     const refreshToken = generateRefreshToken();
     await this.prisma.refreshToken.create({
       data: {
@@ -92,7 +124,7 @@ export class AuthService {
       accessToken: this.jwt.sign({
         sub: user.id,
         orgId: user.organizacionId,
-        sucursalId: user.sucursalId,
+        sucursalId,
         rol: user.rol,
       }),
       refreshToken,
@@ -102,7 +134,7 @@ export class AuthService {
         email: user.email,
         rol: user.rol,
         orgId: user.organizacionId,
-        sucursalId: user.sucursalId,
+        sucursalId,
       },
     };
   }

@@ -8,6 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 function clearSession() {
   window.localStorage.removeItem("comanda.accessToken");
   window.localStorage.removeItem("comanda.refreshToken");
+  window.localStorage.removeItem("comanda.user");
   window.location.reload();
 }
 
@@ -27,6 +28,7 @@ export function AuthSession() {
       const session = await login(API_URL, { email, password });
       window.localStorage.setItem("comanda.accessToken", session.accessToken);
       window.localStorage.setItem("comanda.refreshToken", session.refreshToken);
+      window.localStorage.setItem("comanda.user", JSON.stringify(session.user));
       window.location.reload();
     } catch {
       setError("No se pudo iniciar sesión.");

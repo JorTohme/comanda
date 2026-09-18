@@ -1,4 +1,12 @@
-import { categoriaSchema, centavosToPesos, listCategorias, pesosToCentavos, posicionPorDefecto, setSessionExpiredHandler } from "./index";
+import {
+  categoriaSchema,
+  centavosToPesos,
+  listCategorias,
+  pesosToCentavos,
+  posicionPorDefecto,
+  setSessionExpiredHandler,
+  switchSucursal,
+} from "./index";
 
 describe("centavosToPesos", () => {
   it("formats whole pesos with two decimals", () => {
@@ -153,5 +161,54 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     expect(storage.removeItem).toHaveBeenCalledWith("comanda.accessToken");
     expect(storage.removeItem).toHaveBeenCalledWith("comanda.refreshToken");
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("decodes the expiring access token and sends its sucursalId as a refresh hint", async () => {
+    const expiringToken = fakeJwt({ sucursalId: NEW_SESSION.user.sucursalId });
+    const storage = fakeStorage({ "comanda.accessToken": expiringToken, "comanda.refreshToken": "old-refresh" });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(fakeResponse(401))
+      .mockResolvedValueOnce(fakeResponse(200, NEW_SESSION))
+      .mockResolvedValueOnce(fakeResponse(200, []));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await listCategorias("http://api.test");
+
+    const [, refreshInit] = fetchMock.mock.calls[1];
+    expect(JSON.parse(refreshInit.body as string)).toEqual({
+      refreshToken: "old-refresh",
+      sucursalIdHint: NEW_SESSION.user.sucursalId,
+    });
+    const userCall = storage.setItem.mock.calls.find(([key]) => key === "comanda.user");
+    expect(userCall && JSON.parse(userCall[1])).toEqual(NEW_SESSION.user);
+  });
+});
+
+function fakeJwt(payload: Record<string, unknown>): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "none" })}.${encode(payload)}.sig`;
+}
+
+describe("switchSucursal", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("posts to /auth/switch-sucursal and parses the returned session", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, NEW_SESSION));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await switchSucursal("http://api.test", NEW_SESSION.user.sucursalId);
+
+    expect(result).toEqual(NEW_SESSION);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://api.test/auth/switch-sucursal");
+    expect(JSON.parse(init.body as string)).toEqual({ sucursalId: NEW_SESSION.user.sucursalId });
   });
 });

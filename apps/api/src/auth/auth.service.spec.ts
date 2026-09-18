@@ -1,8 +1,12 @@
 import { Test } from "@nestjs/testing";
-import { UnauthorizedException } from "@nestjs/common";
+import { NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtService, hashPassword } from "./jwt.service";
+
+function decodePayload(token: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+}
 
 const PASSWORD = "correct-horse-battery-staple";
 
@@ -20,6 +24,7 @@ describe("AuthService", () => {
   const prisma = {
     usuario: { findUnique: jest.fn() },
     refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    sucursal: { findFirst: jest.fn() },
   };
 
   beforeEach(async () => {
@@ -108,6 +113,81 @@ describe("AuthService", () => {
       });
 
       await expect(service.refresh("nope")).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("uses a sucursalIdHint that belongs to the same org", async () => {
+      const row = {
+        id: "rt-1",
+        usuarioId: user.id,
+        tokenHash: "hash",
+        expiresAt: new Date(Date.now() + 1000),
+        revokedAt: null,
+      };
+      prisma.refreshToken.findUnique.mockResolvedValue(row);
+      prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.refreshToken.update.mockResolvedValue({});
+      prisma.sucursal.findFirst.mockResolvedValue({ id: "suc-2" });
+
+      const result = await service.refresh("some-raw-token", "suc-2");
+
+      expect(prisma.sucursal.findFirst).toHaveBeenCalledWith({
+        where: { id: "suc-2", organizacionId: user.organizacionId },
+        select: { id: true },
+      });
+      expect(decodePayload(result.accessToken)).toMatchObject({
+        sub: user.id,
+        orgId: user.organizacionId,
+        sucursalId: "suc-2",
+        rol: user.rol,
+      });
+    });
+
+    it("falls back silently to the home sucursal when the hint is from another org or nonexistent", async () => {
+      const row = {
+        id: "rt-1",
+        usuarioId: user.id,
+        tokenHash: "hash",
+        expiresAt: new Date(Date.now() + 1000),
+        revokedAt: null,
+      };
+      prisma.refreshToken.findUnique.mockResolvedValue(row);
+      prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.refreshToken.update.mockResolvedValue({});
+      prisma.sucursal.findFirst.mockResolvedValue(null);
+
+      const result = await service.refresh("some-raw-token", "suc-from-other-org");
+
+      expect(decodePayload(result.accessToken)).toMatchObject({ sucursalId: user.sucursalId });
+    });
+  });
+
+  describe("switchSucursal", () => {
+    it("mints a token for the target sucursal, keeping the same orgId/rol/sub", async () => {
+      prisma.sucursal.findFirst.mockResolvedValue({ id: "suc-2" });
+      prisma.usuario.findUnique.mockResolvedValue(user);
+
+      const result = await service.switchSucursal(user.id, user.organizacionId, "suc-2");
+
+      expect(prisma.sucursal.findFirst).toHaveBeenCalledWith({
+        where: { id: "suc-2", organizacionId: user.organizacionId },
+        select: { id: true },
+      });
+      expect(decodePayload(result.accessToken)).toMatchObject({
+        sub: user.id,
+        orgId: user.organizacionId,
+        sucursalId: "suc-2",
+        rol: user.rol,
+      });
+      expect(result.refreshToken).toEqual(expect.any(String));
+    });
+
+    it("rejects a sucursal that belongs to another org, without leaking whether it exists", async () => {
+      prisma.sucursal.findFirst.mockResolvedValue(null);
+
+      await expect(service.switchSucursal(user.id, user.organizacionId, "suc-other-org")).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.usuario.findUnique).not.toHaveBeenCalled();
     });
   });
 

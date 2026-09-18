@@ -15,4 +15,10 @@ export class ReportesController {
   obtenerReportes(@Query() query: ReportesQueryDto, @CurrentUser() user: TenantContext) {
     return this.reportesService.obtenerReportes(query, user);
   }
+
+  @Roles(RolUsuario.admin)
+  @Get("consolidado")
+  obtenerConsolidado(@Query() query: ReportesQueryDto, @CurrentUser() user: TenantContext) {
+    return this.reportesService.obtenerConsolidado(query, user.orgId);
+  }
 }

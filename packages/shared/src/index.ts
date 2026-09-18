@@ -62,6 +62,15 @@ export const pagoSchema = tenantSchema.extend({
 });
 export type Pago = z.infer<typeof pagoSchema>;
 
+export const sucursalSchema = z.object({
+  id: z.string().uuid(),
+  nombre: z.string(),
+  organizacionId: z.string().uuid(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export type Sucursal = z.infer<typeof sucursalSchema>;
+
 export type CreateCategoriaInput = { nombre: string };
 export type UpdateCategoriaInput = Partial<CreateCategoriaInput>;
 export type CreatePlatoInput = { nombre: string; precio: number; categoriaId: string; disponible?: boolean };
@@ -91,6 +100,7 @@ export type CreatePedidoInput = { tipoServicio: TipoServicio; mesaId?: string; p
 export type AbrirTurnoInput = { montoInicial: number };
 export type CerrarTurnoInput = { montoDeclarado: number };
 export type CreateMovimientoInput = { tipo: TipoMovimientoCaja; monto: number; descripcion: string };
+export type CreateSucursalInput = { nombre: string };
 export interface ApiOptions { accessToken?: string; }
 
 // Static "what's next" chain for the client-side UX hint. Does not know about self-delivery
@@ -158,7 +168,21 @@ function clearSessionAndNotify(): void {
   const storage = readLocalStorage();
   storage?.removeItem("comanda.accessToken");
   storage?.removeItem("comanda.refreshToken");
+  storage?.removeItem("comanda.user");
   sessionExpiredHandler?.();
+}
+
+// Reads the sucursalId hint out of a JWT payload without verifying its signature — only ever
+// used to pick a refresh hint, never for authentication. The tokens this app issues carry only
+// ASCII (uuids, an enum, numeric timestamps), so a plain atob is enough.
+function decodeJwtPayload(token: string): { sucursalId?: string } | null {
+  try {
+    const body = token.split(".")[1];
+    if (!body) return null;
+    return JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
 }
 
 // Single-retry 401 interceptor: relies on the module-level stored tokens, so it only
@@ -174,10 +198,13 @@ async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): P
   }
 
   try {
-    const session = await refreshSession(new URL(url).origin, refresh);
+    const expiringToken = accessToken(options);
+    const hint = expiringToken ? decodeJwtPayload(expiringToken)?.sucursalId : undefined;
+    const session = await refreshSession(new URL(url).origin, refresh, hint);
     const storage = readLocalStorage();
     storage?.setItem("comanda.accessToken", session.accessToken);
     storage?.setItem("comanda.refreshToken", session.refreshToken);
+    storage?.setItem("comanda.user", JSON.stringify(session.user));
     const retry = await fetch(url, { ...init, headers: headers(options) });
     if (retry.status === 401) clearSessionAndNotify();
     return retry;
@@ -209,6 +236,8 @@ export async function listTurnos(baseUrl: string, options?: ApiOptions): Promise
 export async function obtenerTurno(baseUrl: string, id: string, options?: ApiOptions): Promise<TurnoCajaDetalle> { const url = `${baseUrl}/caja/turnos/${id}`; return parseJsonOrThrow(await apiFetch(url, {}, options), turnoCajaDetalleSchema, "GET", url); }
 export async function registrarMovimiento(baseUrl: string, turnoId: string, input: CreateMovimientoInput, options?: ApiOptions): Promise<MovimientoCaja> { const url = `${baseUrl}/caja/turnos/${turnoId}/movimientos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), movimientoCajaSchema, "POST", url); }
 export async function cerrarTurno(baseUrl: string, id: string, input: CerrarTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos/${id}/cerrar`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), turnoCajaSchema, "PATCH", url); }
+export async function listSucursales(baseUrl: string, options?: ApiOptions): Promise<Sucursal[]> { const url = `${baseUrl}/sucursales`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(sucursalSchema), "GET", url); }
+export async function crearSucursal(baseUrl: string, input: CreateSucursalInput, options?: ApiOptions): Promise<Sucursal> { const url = `${baseUrl}/sucursales`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), sucursalSchema, "POST", url); }
 
 const preferenciaPagoSchema = z.object({ initPoint: z.string(), preferenceId: z.string() });
 export async function crearPreferenciaPago(baseUrl: string, pedidoId: string, options?: ApiOptions): Promise<{ initPoint: string; preferenceId: string }> { const url = `${baseUrl}/pagos/preferencia`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify({ pedidoId }) }, options), preferenciaPagoSchema, "POST", url); }
@@ -230,6 +259,15 @@ export async function obtenerReportes(baseUrl: string, desde: string, hasta: str
   return parseJsonOrThrow(await apiFetch(url, {}, options), reportesSchema, "GET", url);
 }
 
+export const reportesConsolidadoSchema = z.array(
+  reportesSchema.extend({ sucursalId: z.string().uuid(), sucursalNombre: z.string() }),
+);
+export type ReportesConsolidado = z.infer<typeof reportesConsolidadoSchema>;
+export async function obtenerReportesConsolidado(baseUrl: string, desde: string, hasta: string, options?: ApiOptions): Promise<ReportesConsolidado> {
+  const url = `${baseUrl}/reportes/consolidado?desde=${desde}&hasta=${hasta}`;
+  return parseJsonOrThrow(await apiFetch(url, {}, options), reportesConsolidadoSchema, "GET", url);
+}
+
 export const rolUsuarioSchema = z.enum(["admin", "caja", "mozo", "cocina"]);
 export type RolUsuario = z.infer<typeof rolUsuarioSchema>;
 export const authSessionSchema = z.object({
@@ -246,13 +284,18 @@ export async function register(baseUrl: string, input: { organizacionNombre: str
   const url = `${baseUrl}/auth/register`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
 }
-export async function refreshSession(baseUrl: string, refreshToken: string): Promise<AuthSession> {
+export async function refreshSession(baseUrl: string, refreshToken: string, sucursalIdHint?: string): Promise<AuthSession> {
   const url = `${baseUrl}/auth/refresh`;
-  return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken }) }), authSessionSchema, "POST", url);
+  return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken, sucursalIdHint }) }), authSessionSchema, "POST", url);
 }
 export async function logout(baseUrl: string, refreshToken: string): Promise<void> {
   const url = `${baseUrl}/auth/logout`;
   return throwIfNotOk(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken }) }), "POST", url);
+}
+// Only admins call this; the caller must be authenticated (unlike login/register/refresh/logout).
+export async function switchSucursal(baseUrl: string, sucursalId: string, options?: ApiOptions): Promise<AuthSession> {
+  const url = `${baseUrl}/auth/switch-sucursal`;
+  return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify({ sucursalId }) }, options), authSessionSchema, "POST", url);
 }
 
 export type { Socket };
