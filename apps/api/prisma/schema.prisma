@@ -8,33 +8,33 @@ datasource db {
 }
 
 model Categoria {
-  id         String   @id @default(uuid())
-  nombre     String
-  orgId      String
-  sucursalId String
+  id           String       @id @default(uuid())
+  nombre       String
+  orgId        String
+  sucursalId   String
   organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
-  platos     Plato[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  platos       Plato[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([orgId, sucursalId])
 }
 
 model Plato {
-  id          String    @id @default(uuid())
-  nombre      String
-  precio      Int
-  disponible  Boolean   @default(true)
-  categoriaId String
-  categoria   Categoria @relation(fields: [categoriaId], references: [id])
-  orgId       String
-  sucursalId  String
+  id           String       @id @default(uuid())
+  nombre       String
+  precio       Int
+  disponible   Boolean      @default(true)
+  categoriaId  String
+  categoria    Categoria    @relation(fields: [categoriaId], references: [id])
+  orgId        String
+  sucursalId   String
   organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  itemsPedido ItemPedido[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  itemsPedido  ItemPedido[]
 
   @@index([orgId, sucursalId])
 }
@@ -46,23 +46,23 @@ enum EstadoMesa {
 }
 
 model Mesa {
-  id         String     @id @default(uuid())
-  nombre     String
-  capacidad  Int
-  estado     EstadoMesa @default(libre)
-  posX       Float?
-  posY       Float?
-  rotacion   Float?     @default(0)
-  forma      String?    @default("rect")
-  ancho      Float?     @default(70)
-  alto       Float?     @default(70)
-  orgId      String
-  sucursalId String
+  id           String       @id @default(uuid())
+  nombre       String
+  capacidad    Int
+  estado       EstadoMesa   @default(libre)
+  posX         Float?
+  posY         Float?
+  rotacion     Float?       @default(0)
+  forma        String?      @default("rect")
+  ancho        Float?       @default(70)
+  alto         Float?       @default(70)
+  orgId        String
+  sucursalId   String
   organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  pedidos    Pedido[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  pedidos      Pedido[]
 
   @@index([orgId, sucursalId])
 }
@@ -97,13 +97,13 @@ model Pedido {
   clientRequestId String?      @unique
   orgId           String
   sucursalId      String
-  organizacion Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
-  sucursal     Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
-  turnoCajaId  String?
-  turnoCaja    TurnoCaja?   @relation(fields: [turnoCajaId], references: [id], onDelete: Restrict)
-  pago         Pago?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  organizacion    Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  sucursal        Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  turnoCajaId     String?
+  turnoCaja       TurnoCaja?   @relation(fields: [turnoCajaId], references: [id], onDelete: Restrict)
+  pago            Pago?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   @@index([orgId, sucursalId])
 }
@@ -115,20 +115,20 @@ enum EstadoPago {
 }
 
 model Pago {
-  id             String     @id @default(uuid())
-  pedidoId       String     @unique
-  pedido         Pedido     @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
-  mpPaymentId    String?    @unique
+  id             String       @id @default(uuid())
+  pedidoId       String       @unique
+  pedido         Pedido       @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
+  mpPaymentId    String?      @unique
   mpPreferenceId String
   mpInitPoint    String
-  estado         EstadoPago @default(pendiente)
+  estado         EstadoPago   @default(pendiente)
   monto          Int
   orgId          String
   sucursalId     String
   organizacion   Organizacion @relation(fields: [orgId], references: [id], onDelete: Restrict)
   sucursal       Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([orgId, sucursalId])
 }
@@ -189,25 +189,26 @@ enum RolUsuario {
 }
 
 model Organizacion {
-  id         String      @id @default(uuid())
-  nombre     String
-  sucursales Sucursal[]
-  usuarios   Usuario[]
-  categorias Categoria[]
-  platos     Plato[]
-  mesas      Mesa[]
-  pedidos    Pedido[]
-  turnosCaja TurnoCaja[]
-  pagos      Pago[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id           String       @id @default(uuid())
+  nombre       String
+  sucursales   Sucursal[]
+  usuarios     Usuario[]
+  categorias   Categoria[]
+  platos       Plato[]
+  mesas        Mesa[]
+  pedidos      Pedido[]
+  turnosCaja   TurnoCaja[]
+  pagos        Pago[]
+  invitaciones Invitation[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
 
 model Sucursal {
-  id             String       @id @default(uuid())
+  id             String         @id @default(uuid())
   nombre         String
   organizacionId String
-  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade)
+  organizacion   Organizacion   @relation(fields: [organizacionId], references: [id], onDelete: Cascade)
   usuarios       Usuario[]
   categorias     Categoria[]
   platos         Plato[]
@@ -216,27 +217,29 @@ model Sucursal {
   turnosCaja     TurnoCaja[]
   pagos          Pago[]
   refreshTokens  RefreshToken[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  invitaciones   Invitation[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@unique([organizacionId, nombre])
 }
 
 model Usuario {
-  id             String       @id @default(uuid())
-  nombre         String
-  email          String       @unique
-  passwordHash   String
-  rol            RolUsuario  @default(admin)
-  organizacionId String
-  sucursalId     String
-  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Restrict)
-  sucursal       Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
-  turnosAbiertos TurnoCaja[]  @relation("TurnoCajaAbiertoPor")
-  turnosCerrados TurnoCaja[]  @relation("TurnoCajaCerradoPor")
-  refreshTokens  RefreshToken[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                  String         @id @default(uuid())
+  nombre              String
+  email               String         @unique
+  passwordHash        String
+  rol                 RolUsuario     @default(admin)
+  organizacionId      String
+  sucursalId          String
+  organizacion        Organizacion   @relation(fields: [organizacionId], references: [id], onDelete: Restrict)
+  sucursal            Sucursal       @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  turnosAbiertos      TurnoCaja[]    @relation("TurnoCajaAbiertoPor")
+  turnosCerrados      TurnoCaja[]    @relation("TurnoCajaCerradoPor")
+  refreshTokens       RefreshToken[]
+  invitacionesCreadas Invitation[]   @relation("InvitationCreatedBy")
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@index([organizacionId, sucursalId])
 }
@@ -254,6 +257,25 @@ model RefreshToken {
 
   @@index([usuarioId])
   @@index([sucursalId])
+}
+
+model Invitation {
+  id             String       @id @default(uuid())
+  tokenHash      String       @unique
+  email          String
+  rol            RolUsuario
+  organizacionId String
+  sucursalId     String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdById    String?
+  organizacion   Organizacion @relation(fields: [organizacionId], references: [id], onDelete: Cascade)
+  sucursal       Sucursal     @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  createdBy      Usuario?     @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizacionId, sucursalId, email])
+  @@index([tokenHash, usedAt, expiresAt])
 }
 
 model ItemPedido {

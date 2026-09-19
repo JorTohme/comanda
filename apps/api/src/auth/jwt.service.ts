@@ -107,3 +107,13 @@ export function generateRefreshToken(): string {
 export function hashRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
+
+// Invitation tokens are bearer credentials. Store only a deterministic hash so
+// the raw activation URL cannot be recovered from the database.
+export function generateInvitationToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+export function hashInvitationToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
