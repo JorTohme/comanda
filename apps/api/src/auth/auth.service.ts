@@ -51,21 +51,24 @@ export class AuthService {
     return this.session(user);
   }
 
-  async refresh(rawToken: string, sucursalIdHint?: string) {
+  async refresh(rawToken: string) {
     const tokenHash = hashRefreshToken(rawToken);
     const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
     if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
       throw new UnauthorizedException("Invalid or expired refresh token");
     }
+
+    const consumed = await this.prisma.refreshToken.updateMany({
+      where: { id: existing.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (consumed.count !== 1) throw new UnauthorizedException("Invalid or expired refresh token");
+
     const user = await this.prisma.usuario.findUnique({ where: { id: existing.usuarioId } });
     if (!user) throw new UnauthorizedException("Invalid or expired refresh token");
-    await this.prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
-    const sucursalId = await this.resolveSucursalId(user.organizacionId, user.sucursalId, sucursalIdHint);
-    return this.session(user, sucursalId);
+    return this.session(user, existing.sucursalId);
   }
 
-  // Explicit admin action: an unknown/foreign sucursalId is a real error here, not a hint to
-  // silently ignore.
   async switchSucursal(usuarioId: string, callerOrgId: string, targetSucursalId: string) {
     const target = await this.prisma.sucursal.findFirst({
       where: { id: targetSucursalId, organizacionId: callerOrgId },
@@ -77,25 +80,9 @@ export class AuthService {
     return this.session(user, target.id);
   }
 
-  // Best-effort hint resolution used by refresh(): never throws, falls back to the caller's
-  // home sucursal when the candidate doesn't exist or belongs to another org.
-  private async resolveSucursalId(
-    homeOrgId: string,
-    homeSucursalId: string,
-    candidateSucursalId?: string,
-  ): Promise<string> {
-    if (!candidateSucursalId) return homeSucursalId;
-    const candidate = await this.prisma.sucursal.findFirst({
-      where: { id: candidateSucursalId, organizacionId: homeOrgId },
-      select: { id: true },
-    });
-    return candidate ? candidate.id : homeSucursalId;
-  }
-
   async logout(rawToken: string): Promise<void> {
     const tokenHash = hashRefreshToken(rawToken);
     const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
-    // Unknown token -> silent no-op, same as revoking one: never leak whether it existed.
     if (existing && !existing.revokedAt) {
       await this.prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
     }
@@ -116,6 +103,7 @@ export class AuthService {
     await this.prisma.refreshToken.create({
       data: {
         usuarioId: user.id,
+        sucursalId,
         tokenHash: hashRefreshToken(refreshToken),
         expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
       },

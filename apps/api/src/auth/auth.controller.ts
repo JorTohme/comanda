@@ -30,7 +30,7 @@ export class AuthController {
   @Public()
   @Post("refresh")
   refresh(@Body() dto: RefreshDto) {
-    return this.authService.refresh(dto.refreshToken, dto.sucursalIdHint);
+    return this.authService.refresh(dto.refreshToken);
   }
 
   @Public()

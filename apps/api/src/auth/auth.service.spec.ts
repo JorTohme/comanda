@@ -23,7 +23,7 @@ describe("AuthService", () => {
   };
   const prisma = {
     usuario: { findUnique: jest.fn() },
-    refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     sucursal: { findFirst: jest.fn() },
   };
 
@@ -39,6 +39,7 @@ describe("AuthService", () => {
       sucursalId: "suc-1",
     };
     prisma.refreshToken.create.mockResolvedValue({});
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
 
     const moduleRef = await Test.createTestingModule({
       providers: [AuthService, JwtService, { provide: PrismaService, useValue: prisma }],
@@ -56,7 +57,7 @@ describe("AuthService", () => {
       expect(result.accessToken).toEqual(expect.any(String));
       expect(result.refreshToken).toEqual(expect.any(String));
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ usuarioId: user.id, expiresAt: expect.any(Date) }),
+        data: expect.objectContaining({ usuarioId: user.id, sucursalId: user.sucursalId, expiresAt: expect.any(Date) }),
       });
     });
   });
@@ -67,21 +68,21 @@ describe("AuthService", () => {
         id: "rt-1",
         usuarioId: user.id,
         tokenHash: "hash",
+        sucursalId: "suc-1",
         expiresAt: new Date(Date.now() + 1000),
         revokedAt: null,
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
-      prisma.refreshToken.update.mockResolvedValue({});
 
       const result = await service.refresh("some-raw-token");
 
-      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-        where: { id: row.id },
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { id: row.id, revokedAt: null },
         data: { revokedAt: expect.any(Date) },
       });
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ usuarioId: user.id }),
+        data: expect.objectContaining({ usuarioId: user.id, sucursalId: row.sucursalId }),
       });
       expect(result.accessToken).toEqual(expect.any(String));
       expect(result.refreshToken).toEqual(expect.any(String));
@@ -115,24 +116,23 @@ describe("AuthService", () => {
       await expect(service.refresh("nope")).rejects.toThrow(UnauthorizedException);
     });
 
-    it("uses a sucursalIdHint that belongs to the same org", async () => {
+    it("keeps the refresh token bound to its original sucursal", async () => {
       const row = {
         id: "rt-1",
         usuarioId: user.id,
         tokenHash: "hash",
+        sucursalId: "suc-2",
         expiresAt: new Date(Date.now() + 1000),
         revokedAt: null,
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
-      prisma.refreshToken.update.mockResolvedValue({});
-      prisma.sucursal.findFirst.mockResolvedValue({ id: "suc-2" });
 
-      const result = await service.refresh("some-raw-token", "suc-2");
+      const result = await service.refresh("some-raw-token");
 
-      expect(prisma.sucursal.findFirst).toHaveBeenCalledWith({
-        where: { id: "suc-2", organizacionId: user.organizacionId },
-        select: { id: true },
+      expect(prisma.sucursal.findFirst).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ sucursalId: row.sucursalId }),
       });
       expect(decodePayload(result.accessToken)).toMatchObject({
         sub: user.id,
@@ -142,22 +142,22 @@ describe("AuthService", () => {
       });
     });
 
-    it("falls back silently to the home sucursal when the hint is from another org or nonexistent", async () => {
+    it("rejects a token that a concurrent refresh already consumed", async () => {
       const row = {
         id: "rt-1",
         usuarioId: user.id,
         tokenHash: "hash",
+        sucursalId: user.sucursalId,
         expiresAt: new Date(Date.now() + 1000),
         revokedAt: null,
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
-      prisma.refreshToken.update.mockResolvedValue({});
-      prisma.sucursal.findFirst.mockResolvedValue(null);
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
 
-      const result = await service.refresh("some-raw-token", "suc-from-other-org");
+      await expect(service.refresh("some-raw-token")).rejects.toThrow(UnauthorizedException);
 
-      expect(decodePayload(result.accessToken)).toMatchObject({ sucursalId: user.sucursalId });
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
     });
   });
 

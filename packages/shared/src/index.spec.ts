@@ -164,8 +164,8 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it("decodes the expiring access token and sends its sucursalId as a refresh hint", async () => {
-    const expiringToken = fakeJwt({ sucursalId: NEW_SESSION.user.sucursalId });
+  it("refreshes without sending a client-controlled sucursal hint", async () => {
+    const expiringToken = "old-access-token";
     const storage = fakeStorage({ "comanda.accessToken": expiringToken, "comanda.refreshToken": "old-refresh" });
     (globalThis as { localStorage?: unknown }).localStorage = storage;
 
@@ -181,7 +181,6 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     const [, refreshInit] = fetchMock.mock.calls[1];
     expect(JSON.parse(refreshInit.body as string)).toEqual({
       refreshToken: "old-refresh",
-      sucursalIdHint: NEW_SESSION.user.sucursalId,
     });
     const userCall = storage.setItem.mock.calls.find(([key]) => key === "comanda.user");
     expect(userCall && JSON.parse(userCall[1])).toEqual(NEW_SESSION.user);
@@ -208,10 +207,6 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
   });
 });
 
-function fakeJwt(payload: Record<string, unknown>): string {
-  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "none" })}.${encode(payload)}.sig`;
-}
 
 describe("switchSucursal", () => {
   const originalFetch = global.fetch;

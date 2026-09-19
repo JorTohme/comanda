@@ -215,6 +215,7 @@ model Sucursal {
   pedidos        Pedido[]
   turnosCaja     TurnoCaja[]
   pagos          Pago[]
+  refreshTokens  RefreshToken[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -241,15 +242,18 @@ model Usuario {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid())
-  usuarioId String
-  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
+  id         String    @id @default(uuid())
+  usuarioId  String
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  sucursalId String
+  sucursal   Sucursal  @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([usuarioId])
+  @@index([sucursalId])
 }
 
 model ItemPedido {
