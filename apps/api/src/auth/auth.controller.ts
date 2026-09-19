@@ -3,23 +3,18 @@ import { RolUsuario } from "@prisma/client";
 import { AuthService } from "./auth.service";
 import { CurrentUser } from "./current-user.decorator";
 import { CurrentUserId } from "./current-user-id.decorator";
-import { TenantContext } from "./jwt.service";
+import { JwtClaims, TenantContext } from "./jwt.service";
 import { Public } from "./public.decorator";
 import { Roles } from "./roles.decorator";
-import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { SwitchSucursalDto } from "./dto/switch-sucursal.dto";
+import { CreateInvitationDto } from "./dto/create-invitation.dto";
+import { AcceptInvitationDto } from "./dto/accept-invitation.dto";
 
 @Controller("auth")
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
-
-  @Public()
-  @Post("register")
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
-  }
 
   @Public()
   @Post("login")
@@ -38,6 +33,18 @@ export class AuthController {
   async logout(@Body() dto: RefreshDto) {
     await this.authService.logout(dto.refreshToken);
     return { status: "ok" };
+  }
+
+  @Roles(RolUsuario.admin)
+  @Post("invitations")
+  createInvitation(@Body() dto: CreateInvitationDto, @CurrentUser() user: JwtClaims) {
+    return this.authService.createInvitation(user, dto);
+  }
+
+  @Public()
+  @Post("invitations/accept")
+  acceptInvitation(@Body() dto: AcceptInvitationDto) {
+    return this.authService.acceptInvitation(dto);
   }
 
   // No @Public() here on purpose: this must go through JwtAuthGuard + @Roles(admin) like
