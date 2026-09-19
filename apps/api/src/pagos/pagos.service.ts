@@ -24,7 +24,7 @@ export class PagosService {
       throw new BadRequestException(`Pedido ${pedidoId} already has a processed payment`);
     }
 
-    const notificationUrl = `${process.env.PUBLIC_BASE_URL ?? ""}/pagos/webhook`;
+    const notificationUrl = this.notificationUrl();
     const monto = pedido.items.reduce((acc, item) => acc + item.precioUnitario * item.cantidad, 0);
 
     const creada = await this.mpClient.crearPreferencia({
@@ -52,6 +52,15 @@ export class PagosService {
     return { initPoint: creada.initPoint, preferenceId: creada.preferenceId };
   }
 
+  private notificationUrl(): string {
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+    if (!baseUrl) throw new BadRequestException("PUBLIC_BASE_URL must be configured before creating payments");
+    try {
+      return new URL("/pagos/webhook", baseUrl).toString();
+    } catch {
+      throw new BadRequestException("PUBLIC_BASE_URL must be a valid URL");
+    }
+  }
   async procesarWebhook(paymentId: string): Promise<void> {
     const pago = await this.mpClient.obtenerPago(paymentId);
     if (!pago.externalReference) return;
@@ -68,9 +77,8 @@ export class PagosService {
       try {
         await this.pedidosService.updateEstado(registro.pedidoId, "cobrado", tenant);
       } catch (err) {
-        // Known limitation: the payment arrived before the pedido was marked entregado, so the
-        // entregado -> cobrado transition guard rejects it. The payment truth (Pago.estado = aprobado)
-        // is still persisted above; only the Pedido state transition is skipped.
+        // Payment may arrive before delivery. Its approved state is persisted here and PedidosService
+        // reconciles it atomically when the pedido later advances to entregado.
         if (err instanceof BadRequestException) return;
         throw err;
       }

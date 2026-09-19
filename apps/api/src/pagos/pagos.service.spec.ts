@@ -6,6 +6,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { MercadoPagoClient } from "./mercadopago.client";
 import { PedidosService } from "../pedidos/pedidos.service";
 
+const ORIGINAL_PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
+
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
   sucursalId: "00000000-0000-0000-0000-000000000012",
@@ -27,6 +29,7 @@ describe("PagosService", () => {
 
   beforeEach(async () => {
     jest.resetAllMocks();
+    process.env.PUBLIC_BASE_URL = "https://api.example.test";
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -38,6 +41,11 @@ describe("PagosService", () => {
     }).compile();
 
     service = moduleRef.get(PagosService);
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_PUBLIC_BASE_URL === undefined) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = ORIGINAL_PUBLIC_BASE_URL;
   });
 
   describe("crearPreferencia", () => {
@@ -80,6 +88,17 @@ describe("PagosService", () => {
       expect(mpClient.crearPreferencia).not.toHaveBeenCalled();
     });
 
+    it("rejects preference creation when PUBLIC_BASE_URL is missing", async () => {
+      delete process.env.PUBLIC_BASE_URL;
+      prisma.pedido.findFirst.mockResolvedValue({
+        id: "pedido-1",
+        items: [{ platoId: "plato-1", nombre: "Milanesa", precioUnitario: 1500, cantidad: 1 }],
+      });
+      prisma.pago.findUnique.mockResolvedValue(null);
+
+      await expect(service.crearPreferencia("pedido-1", TENANT)).rejects.toBeInstanceOf(BadRequestException);
+      expect(mpClient.crearPreferencia).not.toHaveBeenCalled();
+    });
     it("creates a new preference and persists a pendiente Pago when none exists", async () => {
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
