@@ -265,8 +265,8 @@ export async function login(baseUrl: string, input: { email: string; password: s
   const url = `${baseUrl}/auth/login`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
 }
-export async function register(baseUrl: string, input: { organizacionNombre: string; sucursalNombre: string; nombre: string; email: string; password: string; rol?: RolUsuario }): Promise<AuthSession> {
-  const url = `${baseUrl}/auth/register`;
+export async function acceptInvitation(baseUrl: string, input: { token: string; nombre: string; password: string }): Promise<AuthSession> {
+  const url = `${baseUrl}/auth/invitations/accept`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
 }
 export async function refreshSession(baseUrl: string, refreshToken: string): Promise<AuthSession> {

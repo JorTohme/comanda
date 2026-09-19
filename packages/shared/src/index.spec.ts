@@ -3,6 +3,7 @@ import {
   centavosToPesos,
   createCategoria,
   listCategorias,
+  acceptInvitation,
   pesosToCentavos,
   posicionPorDefecto,
   setSessionExpiredHandler,
@@ -226,5 +227,32 @@ describe("switchSucursal", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("http://api.test/auth/switch-sucursal");
     expect(JSON.parse(init.body as string)).toEqual({ sucursalId: NEW_SESSION.user.sucursalId });
+  });
+});
+
+describe("acceptInvitation", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("posts only token, name, and password to the public acceptance endpoint", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, NEW_SESSION));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await acceptInvitation("http://api.test", {
+      token: "opaque-invitation-token",
+      nombre: "María",
+      password: "correct-horse-battery-staple",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://api.test/auth/invitations/accept");
+    expect(JSON.parse(init.body as string)).toEqual({
+      token: "opaque-invitation-token",
+      nombre: "María",
+      password: "correct-horse-battery-staple",
+    });
   });
 });
