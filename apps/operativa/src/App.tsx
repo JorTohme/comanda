@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { AuthSession } from "@comanda/shared";
 import { logout, setSessionExpiredHandler } from "@comanda/shared";
 import { API_URL } from "./config";
 import { LoginScreen } from "./LoginScreen";
-import { MozoView } from "./MozoView";
-import { CocinaView } from "./CocinaView";
+const MozoView = lazy(() => import("./MozoView").then((module) => ({ default: module.MozoView })));
+const CocinaView = lazy(() => import("./CocinaView").then((module) => ({ default: module.CocinaView })));
 import { UnsupportedRoleScreen } from "./UnsupportedRoleScreen";
 
 const SESSION_KEY = "comanda.session";
@@ -46,11 +46,11 @@ export default function App() {
   }
 
   if (session.user.rol === "mozo") {
-    return <MozoView session={session} onLogout={handleLogout} />;
+    return <Suspense fallback={<p className="pantalla text-muted">Cargando...</p>}><MozoView session={session} onLogout={handleLogout} /></Suspense>;
   }
 
   if (session.user.rol === "cocina") {
-    return <CocinaView session={session} onLogout={handleLogout} />;
+    return <Suspense fallback={<p className="pantalla text-muted">Cargando...</p>}><CocinaView session={session} onLogout={handleLogout} /></Suspense>;
   }
 
   return <UnsupportedRoleScreen session={session} onLogout={handleLogout} />;
