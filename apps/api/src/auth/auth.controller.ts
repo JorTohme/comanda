@@ -1,4 +1,5 @@
 import { Body, Controller, Inject, Post } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { RolUsuario } from "@prisma/client";
 import { AuthService } from "./auth.service";
 import { CurrentUser } from "./current-user.decorator";
@@ -17,12 +18,14 @@ export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("login")
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("refresh")
   refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken);
@@ -36,12 +39,14 @@ export class AuthController {
   }
 
   @Roles(RolUsuario.admin)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post("invitations")
   createInvitation(@Body() dto: CreateInvitationDto, @CurrentUser() user: JwtClaims) {
     return this.authService.createInvitation(user, dto);
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("invitations/accept")
   acceptInvitation(@Body() dto: AcceptInvitationDto) {
     return this.authService.acceptInvitation(dto);
