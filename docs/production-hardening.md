@@ -9,6 +9,7 @@ This guide records the safeguards introduced by the production-hardening branch.
 - `JWT_SECRET`
 - `CORS_ORIGINS` — comma-separated allowed frontend origins
 - `PUBLIC_BASE_URL` — public API origin used to register the Mercado Pago webhook URL
+- `WEB_APP_URL` — public web origin used in manual invitation activation links
 - `MERCADOPAGO_ACCESS_TOKEN`
 - `MERCADOPAGO_WEBHOOK_SECRET`
 

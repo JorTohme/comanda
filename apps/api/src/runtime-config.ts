@@ -6,7 +6,7 @@ export interface RuntimeConfig {
 export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const production = env.NODE_ENV === "production";
   const required = production
-    ? ["JWT_SECRET", "CORS_ORIGINS", "MERCADOPAGO_ACCESS_TOKEN", "MERCADOPAGO_WEBHOOK_SECRET", "PUBLIC_BASE_URL"]
+    ? ["JWT_SECRET", "CORS_ORIGINS", "MERCADOPAGO_ACCESS_TOKEN", "MERCADOPAGO_WEBHOOK_SECRET", "PUBLIC_BASE_URL", "WEB_APP_URL"]
     : [];
   for (const name of required) {
     if (!env[name]?.trim()) throw new Error(`${name} environment variable must be set in production`);
