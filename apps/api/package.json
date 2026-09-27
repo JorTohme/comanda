@@ -8,6 +8,7 @@
     "start": "node dist/main.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
+    "test:integration": "jest --config jest.integration.config.cjs",
     "seed": "node --env-file=.env prisma/seed.mjs",
     "invite-admin": "node scripts/invite-admin.mjs"
   },
