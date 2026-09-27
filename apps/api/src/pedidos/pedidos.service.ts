@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { EstadoPedido, TipoServicio } from "@prisma/client";
-import { TenantContext } from "../auth/jwt.service";
+import { JwtClaims, TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MesasService } from "../salon/mesas/mesas.service";
 import { CajaService } from "../caja/caja.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { assertTransicionValida } from "./estado-pedido";
+import { assertPedidoActionAllowed } from "./pedido-policy";
 
 export interface CreatePedidoInput {
   tipoServicio: TipoServicio;
@@ -91,7 +92,22 @@ export class PedidosService {
     return pedido;
   }
 
-  async updateEstado(id: string, destino: EstadoPedido, tenant: TenantContext) {
+  async updateEstado(id: string, destino: EstadoPedido, tenant: TenantContext, actor: JwtClaims) {
+    if (destino === "cobrado") throw new BadRequestException("Use the explicit cash collection endpoint");
+    assertPedidoActionAllowed(actor.rol, destino);
+    return this.transition(id, destino, tenant);
+  }
+
+  // The provider path stays separate from actor-authorized HTTP transitions until atomic Cobro posting replaces it.
+  async settleApprovedPayment(id: string, tenant: TenantContext) {
+    const approved = await this.prisma.pago.findFirst({
+      where: { pedidoId: id, estado: "aprobado", ...tenant }, select: { id: true },
+    });
+    if (!approved) throw new BadRequestException("Approved payment required");
+    return this.transition(id, "cobrado", tenant);
+  }
+
+  private async transition(id: string, destino: EstadoPedido, tenant: TenantContext) {
     const pedido = await this.prisma.pedido.findFirst({ where: { id, ...tenant } });
     if (!pedido) throw new NotFoundException(`Pedido ${id} not found`);
     assertTransicionValida(pedido, destino);

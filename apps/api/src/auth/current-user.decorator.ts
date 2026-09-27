@@ -1,6 +1,7 @@
 import { createParamDecorator, ExecutionContext } from "@nestjs/common";
-import type { JwtClaims } from "./jwt.service";
+import type { JwtClaims, TenantContext } from "./jwt.service";
 
-export const CurrentUser = createParamDecorator((_data: unknown, context: ExecutionContext): JwtClaims =>
-  context.switchToHttp().getRequest<{ user: JwtClaims }>().user,
-);
+export const CurrentUser = createParamDecorator((_data: unknown, context: ExecutionContext): TenantContext => {
+  const { orgId, sucursalId } = context.switchToHttp().getRequest<{ user: JwtClaims }>().user;
+  return { orgId, sucursalId };
+});

@@ -2,6 +2,7 @@ import { Body, Controller, Inject, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { RolUsuario } from "@prisma/client";
 import { AuthService } from "./auth.service";
+import { CurrentActor } from "./current-actor.decorator";
 import { CurrentUser } from "./current-user.decorator";
 import { CurrentUserId } from "./current-user-id.decorator";
 import { JwtClaims, TenantContext } from "./jwt.service";
@@ -41,7 +42,7 @@ export class AuthController {
   @Roles(RolUsuario.admin)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post("invitations")
-  createInvitation(@Body() dto: CreateInvitationDto, @CurrentUser() user: JwtClaims) {
+  createInvitation(@Body() dto: CreateInvitationDto, @CurrentActor() user: JwtClaims) {
     return this.authService.createInvitation(user, dto);
   }
 

@@ -21,6 +21,7 @@ describe("MesasService", () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    pedido: { findFirst: jest.fn() },
   };
   const realtime = {
     emitToSucursal: jest.fn(),
@@ -90,6 +91,18 @@ describe("MesasService", () => {
       data: { posX: 40, posY: 12, rotacion: 90, forma: "circle", ancho: 90, alto: 90 },
     });
     expect(result).toEqual(updated);
+  });
+
+  it("cannot free a table with a nonclosed pedido", async () => {
+    prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
+    prisma.pedido.findFirst.mockResolvedValue({ id: "pedido-1" });
+
+    await expect(service.updateOccupancy("mesa-1", "libre", TENANT)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.mesa.update).not.toHaveBeenCalled();
+    expect(prisma.pedido.findFirst).toHaveBeenCalledWith({
+      where: { mesaId: "mesa-1", estado: { not: "cerrado" }, ...TENANT },
+      select: { id: true },
+    });
   });
 
   it.each(["libre", "ocupada", "pedido_en_curso"] as const)(

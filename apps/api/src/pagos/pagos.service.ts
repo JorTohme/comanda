@@ -75,7 +75,7 @@ export class PagosService {
       await this.prisma.pago.update({ where: { id: registro.id }, data: { estado: "aprobado", mpPaymentId: paymentId } });
       const tenant: TenantContext = { orgId: registro.orgId, sucursalId: registro.sucursalId };
       try {
-        await this.pedidosService.updateEstado(registro.pedidoId, "cobrado", tenant);
+        await this.pedidosService.settleApprovedPayment(registro.pedidoId, tenant);
       } catch (err) {
         // Payment may arrive before delivery. Its approved state is persisted here and PedidosService
         // reconciles it atomically when the pedido later advances to entregado.

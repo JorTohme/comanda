@@ -29,9 +29,19 @@ export class MesasService {
 
   async update(id: string, dto: UpdateMesaDto, tenant: TenantContext) {
     await this.assertOwnedMesa(id, tenant);
+    if (dto.estado === "libre") {
+      const active = await this.prisma.pedido.findFirst({
+        where: { mesaId: id, estado: { not: "cerrado" }, ...tenant }, select: { id: true },
+      });
+      if (active) throw new ConflictException(`Mesa ${id} has an active Pedido`);
+    }
     const mesa = await this.prisma.mesa.update({ where: { id }, data: dto });
     this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", mesa);
     return mesa;
+  }
+
+  updateOccupancy(id: string, estado: "libre" | "ocupada", tenant: TenantContext) {
+    return this.update(id, { estado }, tenant);
   }
 
   async remove(id: string, tenant: TenantContext) {

@@ -4,9 +4,11 @@ import { ROLES_KEY } from "../../auth/roles.decorator";
 import { PlatosController } from "./platos.controller";
 
 describe("PlatosController roles metadata", () => {
-  it("allows admin and cocina to update a plato", () => {
+  it("reserves full dish updates for admin and availability for admin or cocina", () => {
     const roles = Reflect.getMetadata(ROLES_KEY, PlatosController.prototype.update);
-    expect(roles).toEqual([RolUsuario.admin, RolUsuario.cocina]);
+    expect(roles).toEqual([RolUsuario.admin]);
+    const availabilityRoles = Reflect.getMetadata(ROLES_KEY, PlatosController.prototype.updateDisponibilidad);
+    expect(availabilityRoles).toEqual([RolUsuario.admin, RolUsuario.cocina]);
   });
 
   it("keeps create and remove admin-only", () => {

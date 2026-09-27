@@ -1,8 +1,8 @@
 import { Test } from "@nestjs/testing";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import type { EstadoPedido } from "@prisma/client";
 import { PedidosService } from "./pedidos.service";
-import { TenantContext } from "../auth/jwt.service";
+import { JwtClaims, TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { MesasService } from "../salon/mesas/mesas.service";
 import { CajaService } from "../caja/caja.service";
@@ -23,6 +23,7 @@ const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
   sucursalId: "00000000-0000-0000-0000-000000000012",
 };
+const ADMIN: JwtClaims = { ...TENANT, sub: "user-1", rol: "admin", iat: 1, exp: 2 };
 
 describe("PedidosService", () => {
   let service: PedidosService;
@@ -473,7 +474,7 @@ describe("PedidosService", () => {
     describe.each(ESTADOS.flatMap((actual) => ESTADOS.map((destino) => [actual, destino] as const)))(
       "%s -> %s",
       (actual, destino) => {
-        const esLegal = SIGUIENTE[actual] === destino;
+        const esLegal = SIGUIENTE[actual] === destino && destino !== "cobrado";
 
         it(esLegal ? "accepts the legal transition" : "rejects the illegal transition", async () => {
           prisma.pedido.findFirst.mockResolvedValue({
@@ -486,24 +487,19 @@ describe("PedidosService", () => {
           if (esLegal) {
             prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: destino, items: [] });
 
-            const result = await service.updateEstado("pedido-1", destino, TENANT);
+            const result = await service.updateEstado("pedido-1", destino, TENANT, ADMIN);
 
             expect(result.estado).toBe(destino);
-            const expectedData =
-              destino === "cobrado" ? { estado: destino, turnoCajaId: "turno-1" } : { estado: destino };
+            const expectedData = { estado: destino };
             expect(prisma.pedido.update).toHaveBeenCalledWith({
               where: { id: "pedido-1" },
               data: expectedData,
               include: { items: true },
             });
-            if (destino === "cobrado") {
-              expect(caja.assertTurnoAbierto).toHaveBeenCalledWith(TENANT);
-            } else {
-              expect(caja.assertTurnoAbierto).not.toHaveBeenCalled();
-            }
+            expect(caja.assertTurnoAbierto).not.toHaveBeenCalled();
           } else {
-            await expect(service.updateEstado("pedido-1", destino, TENANT)).rejects.toBeInstanceOf(
-              BadRequestException,
+            await expect(service.updateEstado("pedido-1", destino, TENANT, ADMIN)).rejects.toBeInstanceOf(
+              destino === "abierto" ? ForbiddenException : BadRequestException,
             );
             expect(prisma.pedido.update).not.toHaveBeenCalled();
           }
@@ -521,7 +517,7 @@ describe("PedidosService", () => {
       prisma.pago.findFirst.mockResolvedValue({ id: "pago-1" });
       prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cobrado", items: [] });
 
-      const result = await service.updateEstado("pedido-1", "entregado", TENANT);
+      const result = await service.updateEstado("pedido-1", "entregado", TENANT, ADMIN);
 
       expect(prisma.pago.findFirst).toHaveBeenCalledWith({
         where: { pedidoId: "pedido-1", estado: "aprobado", ...TENANT },
@@ -546,7 +542,7 @@ describe("PedidosService", () => {
       prisma.pedido.update.mockResolvedValue(pedidoActualizado);
       mesas.marcarEstado.mockResolvedValue({ id: "mesa-1", estado: "libre" });
 
-      await service.updateEstado("pedido-1", "cerrado", TENANT);
+      await service.updateEstado("pedido-1", "cerrado", TENANT, ADMIN);
 
       expect(mesas.marcarEstado).toHaveBeenCalledWith(prisma, "mesa-1", "libre");
       expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "pedido.actualizado", pedidoActualizado);
@@ -566,7 +562,7 @@ describe("PedidosService", () => {
       const pedidoActualizado = { id: "pedido-1", estado: "cerrado", items: [] };
       prisma.pedido.update.mockResolvedValue(pedidoActualizado);
 
-      await service.updateEstado("pedido-1", "cerrado", TENANT);
+      await service.updateEstado("pedido-1", "cerrado", TENANT, ADMIN);
 
       expect(mesas.marcarEstado).not.toHaveBeenCalled();
       expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "pedido.actualizado", pedidoActualizado);
@@ -576,26 +572,27 @@ describe("PedidosService", () => {
     it("maps P2025 to NotFoundException on a nonexistent id", async () => {
       prisma.pedido.findFirst.mockResolvedValue(null);
 
-      await expect(service.updateEstado("missing-id", "enviado_a_cocina", TENANT)).rejects.toBeInstanceOf(
+      await expect(service.updateEstado("missing-id", "enviado_a_cocina", TENANT, ADMIN)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
-    it("transitioning entregado -> cobrado calls cajaService.assertTurnoAbierto(tenant)", async () => {
+    it("settles an approved delivered payment through the provider-only method", async () => {
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
         estado: "entregado",
         tipoServicio: "barra",
         mesaId: null,
       });
+      prisma.pago.findFirst.mockResolvedValue({ id: "pago-1" });
       prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cobrado", items: [] });
 
-      await service.updateEstado("pedido-1", "cobrado", TENANT);
+      await service.settleApprovedPayment("pedido-1", TENANT);
 
       expect(caja.assertTurnoAbierto).toHaveBeenCalledWith(TENANT);
     });
 
-    it("on success, tx.pedido.update data includes turnoCajaId from the open turno alongside estado cobrado", async () => {
+    it("provider settlement records the current shift in legacy data", async () => {
       caja.assertTurnoAbierto.mockResolvedValue({ id: "turno-42" });
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
@@ -603,9 +600,10 @@ describe("PedidosService", () => {
         tipoServicio: "barra",
         mesaId: null,
       });
+      prisma.pago.findFirst.mockResolvedValue({ id: "pago-1" });
       prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cobrado", items: [] });
 
-      await service.updateEstado("pedido-1", "cobrado", TENANT);
+      await service.settleApprovedPayment("pedido-1", TENANT);
 
       expect(prisma.pedido.update).toHaveBeenCalledWith({
         where: { id: "pedido-1" },
@@ -614,7 +612,7 @@ describe("PedidosService", () => {
       });
     });
 
-    it("rejects entregado -> cobrado with no open turno and persists nothing", async () => {
+    it("rejects provider settlement with no open turno in legacy flow", async () => {
       caja.assertTurnoAbierto.mockRejectedValue(new BadRequestException("No hay un turno de caja abierto"));
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",
@@ -622,8 +620,9 @@ describe("PedidosService", () => {
         tipoServicio: "barra",
         mesaId: null,
       });
+      prisma.pago.findFirst.mockResolvedValue({ id: "pago-1" });
 
-      await expect(service.updateEstado("pedido-1", "cobrado", TENANT)).rejects.toBeInstanceOf(
+      await expect(service.settleApprovedPayment("pedido-1", TENANT)).rejects.toBeInstanceOf(
         BadRequestException,
       );
       expect(prisma.pedido.update).not.toHaveBeenCalled();

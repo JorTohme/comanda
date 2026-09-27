@@ -24,7 +24,7 @@ describe("PagosService", () => {
     obtenerPago: jest.fn(),
   };
   const pedidosService = {
-    updateEstado: jest.fn(),
+    settleApprovedPayment: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -143,7 +143,7 @@ describe("PagosService", () => {
 
       expect(prisma.pago.findUnique).not.toHaveBeenCalled();
       expect(prisma.pago.update).not.toHaveBeenCalled();
-      expect(pedidosService.updateEstado).not.toHaveBeenCalled();
+      expect(pedidosService.settleApprovedPayment).not.toHaveBeenCalled();
     });
 
     it("no-ops when no Pago matches the payment's external_reference", async () => {
@@ -153,7 +153,7 @@ describe("PagosService", () => {
       await service.procesarWebhook("pay-1");
 
       expect(prisma.pago.update).not.toHaveBeenCalled();
-      expect(pedidosService.updateEstado).not.toHaveBeenCalled();
+      expect(pedidosService.settleApprovedPayment).not.toHaveBeenCalled();
     });
 
     it("dedupes: skips reprocessing when this exact payment was already processed", async () => {
@@ -170,7 +170,7 @@ describe("PagosService", () => {
       await service.procesarWebhook("pay-1");
 
       expect(prisma.pago.update).not.toHaveBeenCalled();
-      expect(pedidosService.updateEstado).not.toHaveBeenCalled();
+      expect(pedidosService.settleApprovedPayment).not.toHaveBeenCalled();
     });
 
     it("on approved, marks Pago aprobado and advances the Pedido to cobrado via PedidosService", async () => {
@@ -183,7 +183,7 @@ describe("PagosService", () => {
         orgId: TENANT.orgId,
         sucursalId: TENANT.sucursalId,
       });
-      pedidosService.updateEstado.mockResolvedValue({ id: "pedido-1", estado: "cobrado" });
+      pedidosService.settleApprovedPayment.mockResolvedValue({ id: "pedido-1", estado: "cobrado" });
 
       await service.procesarWebhook("pay-1");
 
@@ -191,7 +191,7 @@ describe("PagosService", () => {
         where: { id: "pago-1" },
         data: { estado: "aprobado", mpPaymentId: "pay-1" },
       });
-      expect(pedidosService.updateEstado).toHaveBeenCalledWith("pedido-1", "cobrado", {
+      expect(pedidosService.settleApprovedPayment).toHaveBeenCalledWith("pedido-1", {
         orgId: TENANT.orgId,
         sucursalId: TENANT.sucursalId,
       });
@@ -207,7 +207,7 @@ describe("PagosService", () => {
         orgId: TENANT.orgId,
         sucursalId: TENANT.sucursalId,
       });
-      pedidosService.updateEstado.mockRejectedValue(new BadRequestException("Cannot transition Pedido from abierto to cobrado"));
+      pedidosService.settleApprovedPayment.mockRejectedValue(new BadRequestException("Cannot transition Pedido from abierto to cobrado"));
 
       await expect(service.procesarWebhook("pay-1")).resolves.toBeUndefined();
       expect(prisma.pago.update).toHaveBeenCalledWith({
@@ -226,7 +226,7 @@ describe("PagosService", () => {
         orgId: TENANT.orgId,
         sucursalId: TENANT.sucursalId,
       });
-      pedidosService.updateEstado.mockRejectedValue(new Error("db exploded"));
+      pedidosService.settleApprovedPayment.mockRejectedValue(new Error("db exploded"));
 
       await expect(service.procesarWebhook("pay-1")).rejects.toThrow("db exploded");
     });
@@ -248,7 +248,7 @@ describe("PagosService", () => {
         where: { id: "pago-1" },
         data: { estado: "rechazado", mpPaymentId: "pay-1" },
       });
-      expect(pedidosService.updateEstado).not.toHaveBeenCalled();
+      expect(pedidosService.settleApprovedPayment).not.toHaveBeenCalled();
     });
 
     it("on a non-terminal status (pending), leaves the Pago untouched", async () => {
@@ -265,7 +265,7 @@ describe("PagosService", () => {
       await service.procesarWebhook("pay-1");
 
       expect(prisma.pago.update).not.toHaveBeenCalled();
-      expect(pedidosService.updateEstado).not.toHaveBeenCalled();
+      expect(pedidosService.settleApprovedPayment).not.toHaveBeenCalled();
     });
   });
 });
