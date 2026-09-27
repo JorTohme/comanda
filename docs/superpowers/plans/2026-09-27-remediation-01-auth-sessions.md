@@ -98,7 +98,7 @@ export function assertPedidoActionAllowed(rol: RolUsuario, destino: EstadoPedido
 ```
 
 Use actual enum values from the merged shared contract; service transitions still enforce valid source/destination. Generic controller rejects `cobrado` for every actor; this policy's cash permission is consumed only by the explicit endpoint in plan 02. Audit every `@CurrentUser` caller: invitations need `CurrentActor`; Prisma calls need projection. A typed parameter alone does not strip JWT properties. Keep organization-wide admin branch/report scopes deliberately explicit.
-- [ ] **Step 4: Run green and existing regression suites.** Run step 2, then `corepack pnpm --filter api test -- --runInBand` and `corepack pnpm -r lint`. Update `AUTHENTICATION.md` with destination/availability/occupancy rules using existing document language.
+- [ ] **Step 4: Run green and existing regression suites.** Run step 2, then `corepack pnpm --filter api test -- --runInBand` and `corepack pnpm -r lint`. Update `openspec/specs/pedidos-admin/spec.md`, `openspec/specs/catalogo-admin/spec.md` and `openspec/specs/salon-admin/spec.md` with destination/availability/occupancy rules using each existing document's language.
 - [ ] **Step 5: Commit only task files.** `git commit -m "fix: enforce tenant projection and actor action policy"` after staging exact modified files with `git add <paths>`; no `git add .`.
 
 ### Task 3: Rotate refresh tokens in one transaction

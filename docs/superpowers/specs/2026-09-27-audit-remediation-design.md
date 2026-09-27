@@ -1,6 +1,6 @@
 # Audit remediation design
 
-Status: written design approved by the user on 2026-09-27; executable implementation plans await approval before product changes.
+Status: written design and executable implementation plans approved by the user on 2026-09-27; implementation is in progress on `codex/audit-remediation`.
 
 ## Outcome
 

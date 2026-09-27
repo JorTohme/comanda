@@ -1,6 +1,6 @@
 # Audit remediation execution index
 
-**Status:** design approved; these implementation plans await user approval. No remediation product code has been applied by this planning change.
+**Status:** design and implementation plans approved; remediation execution is in progress. The planning commit itself did not change product code.
 
 Implement four ordered slices on `codex/audit-remediation`, preserving existing hardening and proving money, authorization and offline behavior with real infrastructure. This is delegated-direct work, not SDD and not receipt-driven review.
 
@@ -19,7 +19,7 @@ Read the [approved design](../specs/2026-09-27-audit-remediation-design.md) with
 
 - Root coordinates one narrow writer for a nontrivial multi-file task; integration and plan self-check remain local. Do not dispatch receipt reviewers or activate a disabled review switch.
 - Read relevant execution/TDD/debugging/verification skills before implementing their tasks. Use worktree isolation when needed, preserve unknown working changes, and never reset/rewrite `main`.
-- No product implementation until plan approval; then execute tasks, run red/green checks and commit reviewable work units. Plans are references, not proof of passing tests.
+- Execute approved tasks with red/green checks and commit reviewable work units. Plans are references, not proof of passing tests.
 - Use `corepack pnpm` and verify version `9.1.2` before installation; do not invoke the host's unrelated pnpm runtime. Frozen install at reuse; deliberate dependency additions regenerate lock through that version.
 - No push, deploy, external provider account/settings mutation or automatic evidence backfill. Use local disposable PostgreSQL/Redis and fake provider responses in tests.
 - Receipt-driven delivery status is `disabled/unmanaged`, not approved. No invented assertions about live remote state or provider settlement.
@@ -66,6 +66,30 @@ Recorded hardening source: locally available `8d1b3ed`, eighteen commits ahead o
 
 During execution, append each task's commit, exact command, tool version, exit status/test totals and environmental limitations here. Keep an unexecuted or blocked task unchecked and state its cause; never substitute a passing mock suite for required real infrastructure.
 
+### 2026-09-27 — Slice 01 baseline reuse
+
+- Merged locally recorded `8d1b3ed` into `codex/audit-remediation` with `git merge --no-ff`; no remote fetch, push or `main` mutation. The checkout was clean before merge.
+- `corepack pnpm --version` → `9.1.2` with `COREPACK_HOME` in the OS temporary directory. `corepack pnpm install --frozen-lockfile` → exit 0. The default Corepack cache had EPERM; network access to download pnpm was permitted only for the escalated command. No lockfile change from install.
+- Regenerated Prisma using `apps/api/node_modules/.bin/prisma.cmd generate --schema prisma/schema.prisma` → exit 0. The planned `corepack pnpm --filter api exec prisma generate` wrapper failed to resolve the command on this Windows host despite the binary existing; direct declared local binary was used.
+- API Jest `apps/api/node_modules/.bin/jest.cmd --runInBand --silent` → **20 suites, 223 tests passed**, exit 0. Shared Jest `packages/shared/node_modules/.bin/jest.cmd --runInBand` → **1 suite, 18 tests passed**, exit 0.
+- `tsc --noEmit` for shared, API, operativa and web → exit 0 each, after building `packages/shared` once to refresh its generated declarations. Web's first run failed on the old declaration artifact (`acceptInvitation` missing); the current source exports it. The API's first run failed on stale Prisma types and unreadable newly installed `@nestjs/throttler` junction; regeneration and escalated verification resolved those environment failures.
+- Official `corepack pnpm -r lint` → exit 0 for API, shared, operativa and web under pnpm `9.1.2`. The test commands above used installed local Jest binaries because this Windows host initially failed to resolve `prisma` through `corepack pnpm --filter api exec` despite the local binary existing.
+- The baseline verification above is unit/typecheck evidence only. At the time it ran, no PostgreSQL/Redis race, browser offline session or provider acceptance had run.
+
+### 2026-09-27 — Slice 01 refresh rotation
+
+- Commit `3a1b173` moves conditional old-token consumption, branch ownership validation and replacement creation into one Prisma transaction.
+- TDD regression tests first failed on nontransactional mint, concurrent double use, cross-organization branch and expiry not in the conditional update; after implementation, focused API Jest `auth.service` → **1 suite, 22 tests passed**, exit 0. Root independently repeated the focused command with the same result.
+- Real PostgreSQL concurrency/rollback evidence is pending task 01.6; a mocked transaction test does not prove database rollback.
+
+### 2026-09-27 — Slice 01 tenant policy, session and integration harness
+
+- Task 01.2 commit `1731a4e`: signed-JWT HTTP regression and actor policy. Root reran API → **24 suites, 269 tests passed**, API `tsc --noEmit` exit 0.
+- Task 01.4 commit `c143550`: canonical validated session, complete legacy-key migration, tab-lock/single-flight refresh, generation guards, HTTP errors and abort signal. Shared build + Jest → **2 suites, 35 tests passed**, exit 0. A new anonymous-request→login-before-response test failed first by resolving stale data, then passed after guarding generation for anonymous requests too.
+- Task 01.6 commit `317dc93`: disposable Docker services, real Nest application/Jest harness and Redis adapter cleanup. Initial HTTP integration boot exposed that dynamic `ThrottlerModule` could not resolve `RedisThrottlerStorage` declared only in the parent AuthModule. After extracting/exporting the storage module and importing it into the dynamic module, disposable Postgres 16/Redis 7 applied 13 migrations and HTTP tests passed: **1 suite, 3 tests** for single-winner concurrency, insert-failure rollback and branch binding. API unit tests → **24 suites, 269 tests passed**, API typecheck exit 0.
+- Test infrastructure is isolated under Compose project `comanda-remediation-test`, database `comanda_test`, ports 55432/56379. Keep it isolated for money migration tests and remove only that compose project afterward.
+- Task 01.5 frontend migration/socket expiry and combined browser acceptance remain pending; mocked/unit socket tests are not multitab browser evidence.
+
 ## Next step
 
-User review and approval of this execution plan, then start plan 01 task 1. No additional design ceremony or automatic SDD artifacts are required.
+Continue plan 01 task 5 frontend migration, then begin plan 02. No additional design ceremony or automatic SDD artifacts are required.
