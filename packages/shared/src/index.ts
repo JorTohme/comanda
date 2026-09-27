@@ -281,21 +281,98 @@ export async function switchSucursal(baseUrl: string, sucursalId: string, option
 }
 
 export type { Socket };
+const realtimeCleanup = new WeakMap<Socket, () => void>();
+
 export function connectRealtime(baseUrl: string): Socket {
+  const browser = (globalThis as typeof globalThis & { window?: { addEventListener: (type: string, listener: () => void) => void; removeEventListener: (type: string, listener: () => void) => void } }).window;
+  const initialSession = readSession();
+  const identity = initialSession && `${initialSession.user.id}:${initialSession.user.orgId}:${initialSession.user.sucursalId}`;
+  const originalConnect = () => socket.connect();
+  let disposed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let retryCount = 0;
+  let lastAttemptAt = 0;
+  let retryRecoveryNeeded = false;
+
+  const hasSameIdentity = () => {
+    const current = readSession();
+    return Boolean(identity && current && identity === `${current.user.id}:${current.user.orgId}:${current.user.sucursalId}`);
+  };
+  const clearRetry = () => {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = undefined;
+  };
+  const scheduleRetry = (delay: number) => {
+    if (disposed || retryTimer || retryCount >= 5 || !hasSameIdentity()) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      if (!disposed && hasSameIdentity()) originalConnect();
+    }, delay);
+  };
+  const retryOnForeground = () => {
+    if (disposed || !retryRecoveryNeeded || !hasSameIdentity()) return;
+    if (retryCount >= 5) retryCount = 0;
+    if (!retryTimer) {
+      scheduleRetry(Math.max(0, 1_000 - (Date.now() - lastAttemptAt)));
+      return;
+    }
+    clearRetry();
+    scheduleRetry(Math.max(0, 1_000 - (Date.now() - lastAttemptAt)));
+  };
+
   const socket = io(baseUrl, {
     autoConnect: false,
     auth: (done) => {
+      lastAttemptAt = Date.now();
       void ensureFreshSession(baseUrl).then(
-        (session) => done({ token: session.accessToken }),
-        () => socket.disconnect(),
+        (session) => {
+          if (!disposed && hasSameIdentity()) {
+            retryRecoveryNeeded = false;
+            done({ token: session.accessToken });
+          }
+          else socket.disconnect();
+        },
+        (error: unknown) => {
+          socket.disconnect();
+          if (disposed || !hasSameIdentity() || error instanceof SessionChangedError) return;
+          const transient = error instanceof TypeError || (error instanceof ApiError && error.status !== 401 && error.status !== 403 && (error.status === 408 || error.status === 429 || error.status >= 500));
+          retryRecoveryNeeded = transient;
+          if (!transient || retryCount >= 5) return;
+          scheduleRetry(Math.min(30_000, 1_000 * 2 ** retryCount));
+          retryCount++;
+        },
       );
     },
     transports: ["websocket"],
     reconnectionAttempts: 5,
   });
   socket.on("disconnect", (reason) => {
-    if (reason === "io server disconnect" && readSession()) socket.connect();
+    if (reason === "io server disconnect" && !disposed && hasSameIdentity()) socket.connect();
+  });
+  socket.on("connect", () => { retryCount = 0; });
+  if (browser) {
+    browser.addEventListener("online", retryOnForeground);
+    browser.addEventListener("focus", retryOnForeground);
+  }
+  realtimeCleanup.set(socket, () => {
+    disposed = true;
+    clearRetry();
+    if (browser) {
+      browser.removeEventListener("online", retryOnForeground);
+      browser.removeEventListener("focus", retryOnForeground);
+    }
+    socket.disconnect();
   });
   socket.connect();
   return socket;
+}
+
+export function disconnectRealtime(socket: Socket): void {
+  const cleanup = realtimeCleanup.get(socket);
+  if (cleanup) {
+    realtimeCleanup.delete(socket);
+    cleanup();
+  } else {
+    socket.disconnect();
+  }
 }

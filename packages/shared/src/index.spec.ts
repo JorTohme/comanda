@@ -16,6 +16,7 @@ import {
   switchSucursal,
   canActOnPedido,
   connectRealtime,
+  disconnectRealtime,
   updateDisponibilidadPlato,
   updateEstadoMesa,
 } from "./index";
@@ -401,6 +402,147 @@ describe("realtime authentication", () => {
     expect(socket.connect).toHaveBeenCalledTimes(2);
     const reconnectAuth = new Promise<unknown>((resolve) => options.auth(resolve));
     await expect(reconnectAuth).resolves.toEqual({ token: renewedToken });
+  });
+});
+
+describe("realtime transient auth recovery", () => {
+  const oldFetch = global.fetch;
+  const oldStorage = (globalThis as { localStorage?: unknown }).localStorage;
+  const oldWindow = (globalThis as { window?: unknown }).window;
+  let browserEvents: Map<string, () => void>;
+  let storage: ReturnType<typeof fakeStorage>;
+
+  function expiringSession() {
+    const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) - 1 })).replace(/=/g, "");
+    return { ...NEW_SESSION, accessToken: `header.${payload}.signature` };
+  }
+
+  function socketHarness() {
+    let auth!: (done: (value: unknown) => void) => void;
+    const socketEvents = new Map<string, (reason: string) => void>();
+    const received: unknown[] = [];
+    const socket = {
+      connect: jest.fn(() => auth((value) => received.push(value))),
+      disconnect: jest.fn(),
+      on: jest.fn((event: string, callback: (reason: string) => void) => { socketEvents.set(event, callback); }),
+    };
+    mockIo.mockImplementation((_url, options) => {
+      auth = (options as { auth: typeof auth }).auth;
+      return socket;
+    });
+    const connection = connectRealtime("http://api.test");
+    return { connection, socket, socketEvents, received };
+  }
+
+  async function flushPromises() {
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    browserEvents = new Map();
+    (globalThis as { window?: unknown }).window = {
+      addEventListener: (event: string, callback: () => void) => browserEvents.set(event, callback),
+      removeEventListener: (event: string) => browserEvents.delete(event),
+    };
+    storage = fakeStorage();
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    saveSession(expiringSession());
+  });
+
+  afterEach(() => {
+    global.fetch = oldFetch;
+    (globalThis as { localStorage?: unknown }).localStorage = oldStorage;
+    (globalThis as { window?: unknown }).window = oldWindow;
+    mockIo.mockReset();
+    jest.useRealTimers();
+  });
+
+  it("backs off after a network refresh failure and reconnects with the replacement token", async () => {
+    const refreshed = { ...NEW_SESSION, accessToken: "replacement-access", refreshToken: "replacement-refresh" };
+    global.fetch = jest.fn()
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValueOnce(fakeResponse(200, refreshed)) as unknown as typeof fetch;
+    const { connection, socket, received } = socketHarness();
+    await flushPromises();
+
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(1);
+    await jest.advanceTimersByTimeAsync(999);
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await flushPromises();
+
+    expect(socket.connect).toHaveBeenCalledTimes(2);
+    expect(received).toContainEqual({ token: refreshed.accessToken });
+    disconnectRealtime(connection);
+  });
+
+  it.each([401, 403])("does not retry a confirmed invalid session (%i)", async (status) => {
+    global.fetch = jest.fn().mockResolvedValue(fakeResponse(status)) as unknown as typeof fetch;
+    const { connection, socket } = socketHarness();
+    await flushPromises();
+
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    disconnectRealtime(connection);
+  });
+
+  it("does not retry a late refresh after the tenant session changes", async () => {
+    let resolve!: (response: Response) => void;
+    global.fetch = jest.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done; })) as unknown as typeof fetch;
+    const { connection, socket } = socketHarness();
+    await flushPromises();
+    saveSession({ ...NEW_SESSION, user: { ...NEW_SESSION.user, sucursalId: "00000000-0000-0000-0000-000000000099" } });
+    resolve(fakeResponse(503));
+    await flushPromises();
+
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+    disconnectRealtime(connection);
+  });
+
+  it("bounds automatic retry attempts but permits a paced retry when connectivity returns", async () => {
+    global.fetch = jest.fn().mockResolvedValue(fakeResponse(503)) as unknown as typeof fetch;
+    const { connection } = socketHarness();
+    await flushPromises();
+
+    await jest.advanceTimersByTimeAsync(31_000);
+    await flushPromises();
+    expect(global.fetch).toHaveBeenCalledTimes(6);
+    expect(jest.getTimerCount()).toBe(0);
+
+    browserEvents.get("online")?.();
+    await jest.advanceTimersByTimeAsync(1_000);
+    await flushPromises();
+    expect(global.fetch).toHaveBeenCalledTimes(7);
+    disconnectRealtime(connection);
+  });
+
+  it("uses focus/online to shorten a later backoff and cancels retries on cleanup", async () => {
+    global.fetch = jest.fn()
+      .mockRejectedValue(new TypeError("offline")) as unknown as typeof fetch;
+    const { connection, socket } = socketHarness();
+    await flushPromises();
+    await jest.advanceTimersByTimeAsync(1_000);
+    await flushPromises();
+    expect(socket.connect).toHaveBeenCalledTimes(2);
+
+    await jest.advanceTimersByTimeAsync(500);
+    browserEvents.get("focus")?.();
+    browserEvents.get("online")?.();
+    await jest.advanceTimersByTimeAsync(499);
+    expect(socket.connect).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(socket.connect).toHaveBeenCalledTimes(3);
+
+    disconnectRealtime(connection);
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(socket.connect).toHaveBeenCalledTimes(3);
   });
 });
 

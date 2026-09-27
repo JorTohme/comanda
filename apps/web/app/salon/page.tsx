@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   connectRealtime,
+  disconnectRealtime,
   createMesa,
   deleteMesa,
   listMesas,
@@ -91,11 +92,11 @@ export default function SalonPage() {
     });
     const unsubscribe = subscribeSession(() => {
       const current = readSession();
-      if (!current || current.user.id !== session?.user.id || current.user.orgId !== session?.user.orgId || current.user.sucursalId !== session?.user.sucursalId) socket.disconnect();
+      if (!current || current.user.id !== session?.user.id || current.user.orgId !== session?.user.orgId || current.user.sucursalId !== session?.user.sucursalId) disconnectRealtime(socket);
     });
     return () => {
       unsubscribe();
-      socket.disconnect();
+      disconnectRealtime(socket);
     };
   }, [session?.user.id, session?.user.orgId, session?.user.sucursalId]);
 

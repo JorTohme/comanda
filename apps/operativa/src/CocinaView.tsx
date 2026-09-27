@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { avanzarEstadoPedido, connectRealtime, listPedidos, listPlatos, readSession, subscribeSession, updateDisponibilidadPlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
+import { avanzarEstadoPedido, connectRealtime, disconnectRealtime, listPedidos, listPlatos, readSession, subscribeSession, updateDisponibilidadPlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
 import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
 import { getDb } from "./db/schema";
@@ -45,12 +45,12 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
     const unsubscribe = subscribeSession(() => {
       const current = readSession();
       if (!current || current.user.id !== session.user.id || current.user.orgId !== session.user.orgId || current.user.sucursalId !== session.user.sucursalId) {
-        socket.disconnect();
+        disconnectRealtime(socket);
       }
     });
     return () => {
       unsubscribe();
-      socket.disconnect();
+      disconnectRealtime(socket);
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);
 

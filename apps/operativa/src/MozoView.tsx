@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   avanzarEstadoPedido,
   connectRealtime,
+  disconnectRealtime,
   listMesas,
   listPedidos,
   listPlatos,
@@ -90,13 +91,13 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
     const unsubscribe = subscribeSession(() => {
       const current = readSession();
       if (!current || current.user.id !== session.user.id || current.user.orgId !== session.user.orgId || current.user.sucursalId !== session.user.sucursalId) {
-        socket.disconnect();
+        disconnectRealtime(socket);
         stopAutoSync();
       }
     });
     return () => {
       unsubscribe();
-      socket.disconnect();
+      disconnectRealtime(socket);
       stopAutoSync();
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);
