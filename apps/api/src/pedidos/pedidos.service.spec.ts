@@ -33,6 +33,7 @@ describe("PedidosService", () => {
       findFirst: jest.fn(),
       update: jest.fn(),
     },
+    pago: { findFirst: jest.fn() },
     plato: {
       findMany: jest.fn(),
     },
@@ -53,6 +54,7 @@ describe("PedidosService", () => {
     jest.resetAllMocks();
     prisma.$transaction.mockImplementation(async (cb: (tx: typeof prisma) => unknown) => cb(prisma));
     caja.assertTurnoAbierto.mockResolvedValue({ id: "turno-1" });
+    prisma.pago.findFirst.mockResolvedValue(null);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -509,6 +511,30 @@ describe("PedidosService", () => {
       },
     );
 
+    it("settles an approved payment when marking the pedido as entregado", async () => {
+      prisma.pedido.findFirst.mockResolvedValue({
+        id: "pedido-1",
+        estado: "listo",
+        tipoServicio: "barra",
+        mesaId: null,
+      });
+      prisma.pago.findFirst.mockResolvedValue({ id: "pago-1" });
+      prisma.pedido.update.mockResolvedValue({ id: "pedido-1", estado: "cobrado", items: [] });
+
+      const result = await service.updateEstado("pedido-1", "entregado", TENANT);
+
+      expect(prisma.pago.findFirst).toHaveBeenCalledWith({
+        where: { pedidoId: "pedido-1", estado: "aprobado", ...TENANT },
+        select: { id: true },
+      });
+      expect(caja.assertTurnoAbierto).toHaveBeenCalledWith(TENANT);
+      expect(prisma.pedido.update).toHaveBeenCalledWith({
+        where: { id: "pedido-1" },
+        data: { estado: "cobrado", turnoCajaId: "turno-1" },
+        include: { items: true },
+      });
+      expect(result.estado).toBe("cobrado");
+    });
     it("reaching cerrado on a mesa pedido calls marcarEstado(tx, mesaId, libre) and emits both events", async () => {
       prisma.pedido.findFirst.mockResolvedValue({
         id: "pedido-1",

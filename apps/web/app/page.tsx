@@ -17,6 +17,7 @@ export default function HomePage() {
   return (
     <div className="space-y-2">
       <h1 className="font-serif text-2xl font-semibold text-ink">Comanda — Consola</h1>
+      <p className="text-sm text-muted">El acceso se habilita únicamente mediante una invitación de tu administrador.</p>
       <p className="text-sm text-muted">
         api ({API_URL}):{" "}
         {health === "loading" ? "checking..." : health === "unreachable" ? "unreachable" : health.status}

@@ -13,7 +13,7 @@ let warnedMissingSecret = false;
 export function isValidWebhookSignature(input: WebhookSignatureInput): boolean {
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
   if (!secret) {
-    // ponytail: webhook signature validation is a no-op until MERCADOPAGO_WEBHOOK_SECRET is set (deferred per user request); once set, this must fail closed on a missing/invalid signature
+    if (process.env.NODE_ENV === "production") return false;
     if (!warnedMissingSecret) {
       // eslint-disable-next-line no-console
       console.warn("MERCADOPAGO_WEBHOOK_SECRET not set — skipping webhook signature validation (dev-only)");

@@ -172,19 +172,6 @@ function clearSessionAndNotify(): void {
   sessionExpiredHandler?.();
 }
 
-// Reads the sucursalId hint out of a JWT payload without verifying its signature — only ever
-// used to pick a refresh hint, never for authentication. The tokens this app issues carry only
-// ASCII (uuids, an enum, numeric timestamps), so a plain atob is enough.
-function decodeJwtPayload(token: string): { sucursalId?: string } | null {
-  try {
-    const body = token.split(".")[1];
-    if (!body) return null;
-    return JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return null;
-  }
-}
-
 // Single-retry 401 interceptor: relies on the module-level stored tokens, so it only
 // engages when the caller didn't bring their own accessToken (those manage their own lifecycle).
 async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): Promise<Response> {
@@ -198,9 +185,7 @@ async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): P
   }
 
   try {
-    const expiringToken = accessToken(options);
-    const hint = expiringToken ? decodeJwtPayload(expiringToken)?.sucursalId : undefined;
-    const session = await refreshSession(new URL(url).origin, refresh, hint);
+    const session = await refreshSession(new URL(url).origin, refresh);
     const storage = readLocalStorage();
     storage?.setItem("comanda.accessToken", session.accessToken);
     storage?.setItem("comanda.refreshToken", session.refreshToken);
@@ -280,13 +265,13 @@ export async function login(baseUrl: string, input: { email: string; password: s
   const url = `${baseUrl}/auth/login`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
 }
-export async function register(baseUrl: string, input: { organizacionNombre: string; sucursalNombre: string; nombre: string; email: string; password: string; rol?: RolUsuario }): Promise<AuthSession> {
-  const url = `${baseUrl}/auth/register`;
+export async function acceptInvitation(baseUrl: string, input: { token: string; nombre: string; password: string }): Promise<AuthSession> {
+  const url = `${baseUrl}/auth/invitations/accept`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);
 }
-export async function refreshSession(baseUrl: string, refreshToken: string, sucursalIdHint?: string): Promise<AuthSession> {
+export async function refreshSession(baseUrl: string, refreshToken: string): Promise<AuthSession> {
   const url = `${baseUrl}/auth/refresh`;
-  return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken, sucursalIdHint }) }), authSessionSchema, "POST", url);
+  return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken }) }), authSessionSchema, "POST", url);
 }
 export async function logout(baseUrl: string, refreshToken: string): Promise<void> {
   const url = `${baseUrl}/auth/logout`;

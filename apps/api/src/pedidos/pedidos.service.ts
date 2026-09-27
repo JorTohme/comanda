@@ -95,11 +95,17 @@ export class PedidosService {
     const pedido = await this.prisma.pedido.findFirst({ where: { id, ...tenant } });
     if (!pedido) throw new NotFoundException(`Pedido ${id} not found`);
     assertTransicionValida(pedido, destino);
-    const turno = destino === "cobrado" ? await this.cajaService.assertTurnoAbierto(tenant) : null;
+
+    const pagoAprobado = destino === "entregado"
+      ? await this.prisma.pago.findFirst({ where: { pedidoId: id, estado: "aprobado", ...tenant }, select: { id: true } })
+      : null;
+    const estadoFinal: EstadoPedido = pagoAprobado ? "cobrado" : destino;
+    const turno = estadoFinal === "cobrado" ? await this.cajaService.assertTurnoAbierto(tenant) : null;
+
     const { updated, mesa } = await this.prisma.$transaction(async (tx) => {
-      const data = turno ? { estado: destino, turnoCajaId: turno.id } : { estado: destino };
+      const data = turno ? { estado: estadoFinal, turnoCajaId: turno.id } : { estado: estadoFinal };
       const updated = await tx.pedido.update({ where: { id }, data, include: { items: true } });
-      const mesa = destino === "cerrado" && pedido.tipoServicio === "mesa" && pedido.mesaId
+      const mesa = estadoFinal === "cerrado" && pedido.tipoServicio === "mesa" && pedido.mesaId
         ? await this.mesasService.marcarEstado(tx, pedido.mesaId, "libre")
         : null;
       return { updated, mesa };

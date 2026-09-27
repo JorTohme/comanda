@@ -61,18 +61,24 @@ export default function CajaPage() {
   }, []);
 
   async function handleCobrarConMercadoPago(pedidoId: string) {
+    const checkoutWindow = window.open("", "_blank");
+    if (!checkoutWindow) {
+      setError("El navegador bloqueó la ventana de pago. Habilitá pop-ups e intentá de nuevo.");
+      return;
+    }
+
     setError(null);
     setCobrandoPedidoId(pedidoId);
     try {
       const { initPoint } = await crearPreferenciaPago(API_URL, pedidoId);
-      window.open(initPoint, "_blank");
+      checkoutWindow.location.assign(initPoint);
     } catch (err) {
+      checkoutWindow.close();
       setError(mensajeDeError(err));
     } finally {
       setCobrandoPedidoId(null);
     }
   }
-
   async function handleAbrirTurno(e: React.FormEvent) {
     e.preventDefault();
     setError(null);

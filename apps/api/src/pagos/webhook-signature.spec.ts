@@ -1,20 +1,31 @@
 import { createHmac } from "crypto";
 import { isValidWebhookSignature } from "./webhook-signature";
 
-const ORIGINAL_ENV = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+const ORIGINAL_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 describe("isValidWebhookSignature", () => {
   afterEach(() => {
-    if (ORIGINAL_ENV === undefined) delete process.env.MERCADOPAGO_WEBHOOK_SECRET;
-    else process.env.MERCADOPAGO_WEBHOOK_SECRET = ORIGINAL_ENV;
+    if (ORIGINAL_SECRET === undefined) delete process.env.MERCADOPAGO_WEBHOOK_SECRET;
+    else process.env.MERCADOPAGO_WEBHOOK_SECRET = ORIGINAL_SECRET;
+    if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
   });
 
-  it("allows through when MERCADOPAGO_WEBHOOK_SECRET is not set (deferred setup)", () => {
+  it("allows through without a secret only outside production", () => {
+    process.env.NODE_ENV = "development";
     delete process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
     const result = isValidWebhookSignature({ xSignature: undefined, xRequestId: undefined, dataId: "123" });
 
     expect(result).toBe(true);
+  });
+
+  it("rejects unsigned webhooks in production", () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.MERCADOPAGO_WEBHOOK_SECRET;
+
+    expect(isValidWebhookSignature({ xSignature: undefined, xRequestId: undefined, dataId: "123" })).toBe(false);
   });
 
   it("accepts a correctly computed signature when the secret is set", () => {

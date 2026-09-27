@@ -1,14 +1,22 @@
-import { ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { JwtService, generateRefreshToken, hashPassword, hashRefreshToken, verifyPassword } from "./jwt.service";
-import { RegisterDto } from "./dto/register.dto";
+import {
+  JwtClaims,
+  JwtService,
+  generateInvitationToken,
+  generateRefreshToken,
+  hashInvitationToken,
+  hashPassword,
+  hashRefreshToken,
+  verifyPassword,
+} from "./jwt.service";
 import { LoginDto } from "./dto/login.dto";
+import { CreateInvitationDto } from "./dto/create-invitation.dto";
+import { AcceptInvitationDto } from "./dto/accept-invitation.dto";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-function isUniqueError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2002";
-}
+const INVITATION_TTL_MS = 72 * 60 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -16,32 +24,6 @@ export class AuthService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(JwtService) private readonly jwt: JwtService,
   ) {}
-
-  async register(dto: RegisterDto) {
-    try {
-      const passwordHash = await hashPassword(dto.password);
-      const user = await this.prisma.$transaction(async (tx) => {
-        const organizacion = await tx.organizacion.create({ data: { nombre: dto.organizacionNombre } });
-        const sucursal = await tx.sucursal.create({
-          data: { nombre: dto.sucursalNombre, organizacionId: organizacion.id },
-        });
-        return tx.usuario.create({
-          data: {
-            nombre: dto.nombre,
-            email: dto.email.toLowerCase(),
-            passwordHash,
-            rol: dto.rol,
-            organizacionId: organizacion.id,
-            sucursalId: sucursal.id,
-          },
-        });
-      });
-      return this.session(user);
-    } catch (error) {
-      if (isUniqueError(error)) throw new ConflictException("Email or branch already exists");
-      throw error;
-    }
-  }
 
   async login(dto: LoginDto) {
     const user = await this.prisma.usuario.findUnique({ where: { email: dto.email.toLowerCase() } });
@@ -51,21 +33,24 @@ export class AuthService {
     return this.session(user);
   }
 
-  async refresh(rawToken: string, sucursalIdHint?: string) {
+  async refresh(rawToken: string) {
     const tokenHash = hashRefreshToken(rawToken);
     const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
     if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
       throw new UnauthorizedException("Invalid or expired refresh token");
     }
+
+    const consumed = await this.prisma.refreshToken.updateMany({
+      where: { id: existing.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (consumed.count !== 1) throw new UnauthorizedException("Invalid or expired refresh token");
+
     const user = await this.prisma.usuario.findUnique({ where: { id: existing.usuarioId } });
     if (!user) throw new UnauthorizedException("Invalid or expired refresh token");
-    await this.prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
-    const sucursalId = await this.resolveSucursalId(user.organizacionId, user.sucursalId, sucursalIdHint);
-    return this.session(user, sucursalId);
+    return this.session(user, existing.sucursalId);
   }
 
-  // Explicit admin action: an unknown/foreign sucursalId is a real error here, not a hint to
-  // silently ignore.
   async switchSucursal(usuarioId: string, callerOrgId: string, targetSucursalId: string) {
     const target = await this.prisma.sucursal.findFirst({
       where: { id: targetSucursalId, organizacionId: callerOrgId },
@@ -77,27 +62,71 @@ export class AuthService {
     return this.session(user, target.id);
   }
 
-  // Best-effort hint resolution used by refresh(): never throws, falls back to the caller's
-  // home sucursal when the candidate doesn't exist or belongs to another org.
-  private async resolveSucursalId(
-    homeOrgId: string,
-    homeSucursalId: string,
-    candidateSucursalId?: string,
-  ): Promise<string> {
-    if (!candidateSucursalId) return homeSucursalId;
-    const candidate = await this.prisma.sucursal.findFirst({
-      where: { id: candidateSucursalId, organizacionId: homeOrgId },
-      select: { id: true },
-    });
-    return candidate ? candidate.id : homeSucursalId;
-  }
-
   async logout(rawToken: string): Promise<void> {
     const tokenHash = hashRefreshToken(rawToken);
     const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
-    // Unknown token -> silent no-op, same as revoking one: never leak whether it existed.
     if (existing && !existing.revokedAt) {
       await this.prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
+    }
+  }
+
+  async createInvitation(caller: JwtClaims, dto: CreateInvitationDto) {
+    if (caller.rol !== "admin") throw new UnauthorizedException("Invalid invitation issuer");
+    if (dto.rol === "admin") {
+      throw new BadRequestException("Only employee roles may be invited");
+    }
+
+    const sucursal = await this.prisma.sucursal.findFirst({
+      where: { id: dto.sucursalId, organizacionId: caller.orgId },
+      select: { id: true },
+    });
+    if (!sucursal) throw new NotFoundException(`Sucursal ${dto.sucursalId} not found`);
+
+    const token = generateInvitationToken();
+    const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+    await this.prisma.invitation.create({
+      data: {
+        tokenHash: hashInvitationToken(token),
+        email: dto.email.toLowerCase(),
+        rol: dto.rol,
+        organizacionId: caller.orgId,
+        sucursalId: sucursal.id,
+        expiresAt,
+        createdById: caller.sub,
+      },
+    });
+
+    return { activationUrl: this.activationUrl(token), expiresAt };
+  }
+
+  async acceptInvitation(dto: AcceptInvitationDto) {
+    const tokenHash = hashInvitationToken(dto.token);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const invitation = await tx.invitation.findUnique({ where: { tokenHash } });
+        if (!invitation || invitation.usedAt || invitation.expiresAt <= new Date()) throw this.invalidInvitation();
+
+        const consumed = await tx.invitation.updateMany({
+          where: { id: invitation.id, tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+          data: { usedAt: new Date() },
+        });
+        if (consumed.count !== 1) throw this.invalidInvitation();
+
+        const user = await tx.usuario.create({
+          data: {
+            nombre: dto.nombre,
+            email: invitation.email,
+            passwordHash: await hashPassword(dto.password),
+            rol: invitation.rol,
+            organizacionId: invitation.organizacionId,
+            sucursalId: invitation.sucursalId,
+          },
+        });
+        return this.session(user, invitation.sucursalId, tx);
+      });
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw this.invalidInvitation();
     }
   }
 
@@ -111,11 +140,13 @@ export class AuthService {
       sucursalId: string;
     },
     sucursalId: string = user.sucursalId,
+    db: Pick<PrismaService, "refreshToken"> = this.prisma,
   ) {
     const refreshToken = generateRefreshToken();
-    await this.prisma.refreshToken.create({
+    await db.refreshToken.create({
       data: {
         usuarioId: user.id,
+        sucursalId,
         tokenHash: hashRefreshToken(refreshToken),
         expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
       },
@@ -137,5 +168,15 @@ export class AuthService {
         sucursalId,
       },
     };
+  }
+
+  private activationUrl(token: string): string {
+    const url = new URL("/invitacion", process.env.WEB_APP_URL ?? "http://localhost:3000");
+    url.searchParams.set("token", token);
+    return url.toString();
+  }
+
+  private invalidInvitation(): UnauthorizedException {
+    return new UnauthorizedException("Invalid invitation");
   }
 }

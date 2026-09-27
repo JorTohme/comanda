@@ -52,9 +52,9 @@ const LABEL_ESTADO_PEDIDO: Record<Pedido["estado"], string> = {
 };
 
 export function MozoView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
-  const mesas = useRxData<Mesa>("mesas", session.user.orgId);
-  const platos = useRxData<Plato>("platos", session.user.orgId);
-  const pedidos = useRxData<Pedido>("pedidos", session.user.orgId);
+  const mesas = useRxData<Mesa>("mesas", session.user.orgId, session.user.sucursalId);
+  const platos = useRxData<Plato>("platos", session.user.orgId, session.user.sucursalId);
+  const pedidos = useRxData<Pedido>("pedidos", session.user.orgId, session.user.sucursalId);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [form, setForm] = useState(FORM_VACIO);
@@ -62,7 +62,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   function cargarDatos() {
     return Promise.all([listMesas(API_URL), listPlatos(API_URL), listPedidos(API_URL)])
       .then(async ([mesasRes, platosRes, pedidosRes]) => {
-        const db = await getDb(session.user.orgId);
+        const db = await getDb(session.user.orgId, session.user.sucursalId);
         await Promise.all([
           ...mesasRes.map((mesa) => db.collections.mesas.upsert(mesa)),
           ...platosRes.map((plato) => db.collections.platos.upsert(plato)),
@@ -75,14 +75,14 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   useEffect(() => {
     cargarDatos().finally(() => setCargando(false));
 
-    const stopAutoSync = setupAutoSync(API_URL, session.user.orgId, (err) => setError(mensajeDeError(err)));
+    const stopAutoSync = setupAutoSync(API_URL, { orgId: session.user.orgId, sucursalId: session.user.sucursalId }, (err) => setError(mensajeDeError(err)));
     const socket = connectRealtime(API_URL, session.accessToken);
     socket.on("pedido.actualizado", async (pedido: Pedido) => {
-      const db = await getDb(session.user.orgId);
+      const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.pedidos.upsert(pedido);
     });
     socket.on("mesa.actualizada", async (mesa: Mesa) => {
-      const db = await getDb(session.user.orgId);
+      const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.mesas.upsert(mesa);
     });
     return () => {
@@ -126,7 +126,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
     setError(null);
     try {
       const actualizado = await avanzarEstadoPedido(API_URL, pedidoId, estado);
-      const db = await getDb(session.user.orgId);
+      const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.pedidos.upsert(actualizado);
     } catch (err) {
       setError(mensajeDeError(err));

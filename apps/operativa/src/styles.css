@@ -278,3 +278,9 @@ input, select, button { font-family: inherit; }
 }
 .barra-envio .resumen { display: flex; align-items: baseline; justify-content: space-between; font-size: 14px; }
 .barra-envio .total { font-family: var(--font-heading); font-size: 20px; color: var(--color-bg); }
+
+@media (max-width: 640px) {
+  .encabezado, .kds-barra-superior { align-items: flex-start; flex-wrap: wrap; }
+  .kds-tablero { grid-template-columns: 1fr; }
+  .kds-pantalla { padding: var(--space-4); }
+}

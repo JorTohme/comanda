@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtService, hashPassword } from "./jwt.service";
@@ -22,9 +22,11 @@ describe("AuthService", () => {
     sucursalId: string;
   };
   const prisma = {
-    usuario: { findUnique: jest.fn() },
-    refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    usuario: { findUnique: jest.fn(), create: jest.fn() },
+    refreshToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     sucursal: { findFirst: jest.fn() },
+    invitation: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
+    $transaction: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -39,6 +41,8 @@ describe("AuthService", () => {
       sucursalId: "suc-1",
     };
     prisma.refreshToken.create.mockResolvedValue({});
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation(async (operation) => operation(prisma));
 
     const moduleRef = await Test.createTestingModule({
       providers: [AuthService, JwtService, { provide: PrismaService, useValue: prisma }],
@@ -56,7 +60,7 @@ describe("AuthService", () => {
       expect(result.accessToken).toEqual(expect.any(String));
       expect(result.refreshToken).toEqual(expect.any(String));
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ usuarioId: user.id, expiresAt: expect.any(Date) }),
+        data: expect.objectContaining({ usuarioId: user.id, sucursalId: user.sucursalId, expiresAt: expect.any(Date) }),
       });
     });
   });
@@ -67,21 +71,21 @@ describe("AuthService", () => {
         id: "rt-1",
         usuarioId: user.id,
         tokenHash: "hash",
+        sucursalId: "suc-1",
         expiresAt: new Date(Date.now() + 1000),
         revokedAt: null,
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
-      prisma.refreshToken.update.mockResolvedValue({});
 
       const result = await service.refresh("some-raw-token");
 
-      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-        where: { id: row.id },
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { id: row.id, revokedAt: null },
         data: { revokedAt: expect.any(Date) },
       });
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ usuarioId: user.id }),
+        data: expect.objectContaining({ usuarioId: user.id, sucursalId: row.sucursalId }),
       });
       expect(result.accessToken).toEqual(expect.any(String));
       expect(result.refreshToken).toEqual(expect.any(String));
@@ -115,24 +119,23 @@ describe("AuthService", () => {
       await expect(service.refresh("nope")).rejects.toThrow(UnauthorizedException);
     });
 
-    it("uses a sucursalIdHint that belongs to the same org", async () => {
+    it("keeps the refresh token bound to its original sucursal", async () => {
       const row = {
         id: "rt-1",
         usuarioId: user.id,
         tokenHash: "hash",
+        sucursalId: "suc-2",
         expiresAt: new Date(Date.now() + 1000),
         revokedAt: null,
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
-      prisma.refreshToken.update.mockResolvedValue({});
-      prisma.sucursal.findFirst.mockResolvedValue({ id: "suc-2" });
 
-      const result = await service.refresh("some-raw-token", "suc-2");
+      const result = await service.refresh("some-raw-token");
 
-      expect(prisma.sucursal.findFirst).toHaveBeenCalledWith({
-        where: { id: "suc-2", organizacionId: user.organizacionId },
-        select: { id: true },
+      expect(prisma.sucursal.findFirst).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ sucursalId: row.sucursalId }),
       });
       expect(decodePayload(result.accessToken)).toMatchObject({
         sub: user.id,
@@ -142,22 +145,22 @@ describe("AuthService", () => {
       });
     });
 
-    it("falls back silently to the home sucursal when the hint is from another org or nonexistent", async () => {
+    it("rejects a token that a concurrent refresh already consumed", async () => {
       const row = {
         id: "rt-1",
         usuarioId: user.id,
         tokenHash: "hash",
+        sucursalId: user.sucursalId,
         expiresAt: new Date(Date.now() + 1000),
         revokedAt: null,
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
-      prisma.refreshToken.update.mockResolvedValue({});
-      prisma.sucursal.findFirst.mockResolvedValue(null);
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
 
-      const result = await service.refresh("some-raw-token", "suc-from-other-org");
+      await expect(service.refresh("some-raw-token")).rejects.toThrow(UnauthorizedException);
 
-      expect(decodePayload(result.accessToken)).toMatchObject({ sucursalId: user.sucursalId });
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
     });
   });
 
@@ -210,6 +213,114 @@ describe("AuthService", () => {
 
       await expect(service.logout("unknown-token")).resolves.toBeUndefined();
       expect(prisma.refreshToken.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("invitations", () => {
+    const caller = {
+      sub: "admin-1",
+      orgId: "org-1",
+      sucursalId: "suc-1",
+      rol: "admin" as const,
+      iat: 1,
+      exp: 2,
+    };
+
+    it("creates an employee invitation only in the caller organization", async () => {
+      prisma.sucursal.findFirst.mockResolvedValue({ id: "suc-2" });
+      prisma.invitation.create.mockResolvedValue({});
+
+      const result = await service.createInvitation(caller, {
+        email: "Cook@Example.com",
+        sucursalId: "suc-2",
+        rol: "cocina",
+      });
+
+      expect(prisma.invitation.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          email: "cook@example.com",
+          rol: "cocina",
+          organizacionId: "org-1",
+          sucursalId: "suc-2",
+          createdById: "admin-1",
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        }),
+      });
+      expect(result.activationUrl).toContain("/invitacion?token=");
+    });
+
+    it("rejects a non-admin issuer even when the service is called directly", async () => {
+      await expect(service.createInvitation({ ...caller, rol: "mozo" }, { email: "staff@example.com", sucursalId: "suc-1", rol: "caja" })).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.sucursal.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invitation to a branch outside the caller organization", async () => {
+      prisma.sucursal.findFirst.mockResolvedValue(null);
+
+      await expect(service.createInvitation(caller, { email: "staff@example.com", sucursalId: "other-org", rol: "mozo" })).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.invitation.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects admin invitations from the employee invitation API", async () => {
+      await expect(service.createInvitation(caller, { email: "staff@example.com", sucursalId: "suc-1", rol: "admin" })).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.sucursal.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("accepts an invitation once and creates the fixed user identity", async () => {
+      const invitation = {
+        id: "invite-1",
+        email: "cook@example.com",
+        rol: "cocina" as const,
+        organizacionId: "org-1",
+        sucursalId: "suc-2",
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      };
+      prisma.invitation.findUnique.mockResolvedValue(invitation);
+      prisma.invitation.updateMany.mockResolvedValue({ count: 1 });
+      prisma.usuario.create.mockResolvedValue({ ...user, ...invitation, id: "user-2", nombre: "María", passwordHash: "hash" });
+
+      const result = await service.acceptInvitation({ token: "raw-token", nombre: "María", password: PASSWORD });
+
+      expect(prisma.invitation.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({ id: "invite-1", usedAt: null }),
+        data: { usedAt: expect.any(Date) },
+      });
+      expect(prisma.usuario.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          nombre: "María",
+          email: "cook@example.com",
+          rol: "cocina",
+          organizacionId: "org-1",
+          sucursalId: "suc-2",
+          passwordHash: expect.any(String),
+        }),
+      });
+      expect(result.user).toMatchObject({ email: "cook@example.com", rol: "cocina", orgId: "org-1", sucursalId: "suc-2" });
+    });
+
+    it("returns the generic invalid-invitation error when a concurrent acceptance already consumed it", async () => {
+      prisma.invitation.findUnique.mockResolvedValue({
+        id: "invite-1",
+        email: "cook@example.com",
+        rol: "cocina",
+        organizacionId: "org-1",
+        sucursalId: "suc-2",
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      });
+      prisma.invitation.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.acceptInvitation({ token: "raw-token", nombre: "María", password: PASSWORD })).rejects.toThrow("Invalid invitation");
+      expect(prisma.usuario.create).not.toHaveBeenCalled();
+    });
+
+    it("returns the same generic error for an unknown token", async () => {
+      prisma.invitation.findUnique.mockResolvedValue(null);
+
+      await expect(service.acceptInvitation({ token: "unknown-token", nombre: "María", password: PASSWORD })).rejects.toThrow("Invalid invitation");
+      expect(prisma.usuario.create).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,6 +3,7 @@ import {
   centavosToPesos,
   createCategoria,
   listCategorias,
+  acceptInvitation,
   pesosToCentavos,
   posicionPorDefecto,
   setSessionExpiredHandler,
@@ -164,8 +165,8 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it("decodes the expiring access token and sends its sucursalId as a refresh hint", async () => {
-    const expiringToken = fakeJwt({ sucursalId: NEW_SESSION.user.sucursalId });
+  it("refreshes without sending a client-controlled sucursal hint", async () => {
+    const expiringToken = "old-access-token";
     const storage = fakeStorage({ "comanda.accessToken": expiringToken, "comanda.refreshToken": "old-refresh" });
     (globalThis as { localStorage?: unknown }).localStorage = storage;
 
@@ -181,7 +182,6 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     const [, refreshInit] = fetchMock.mock.calls[1];
     expect(JSON.parse(refreshInit.body as string)).toEqual({
       refreshToken: "old-refresh",
-      sucursalIdHint: NEW_SESSION.user.sucursalId,
     });
     const userCall = storage.setItem.mock.calls.find(([key]) => key === "comanda.user");
     expect(userCall && JSON.parse(userCall[1])).toEqual(NEW_SESSION.user);
@@ -208,10 +208,6 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
   });
 });
 
-function fakeJwt(payload: Record<string, unknown>): string {
-  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "none" })}.${encode(payload)}.sig`;
-}
 
 describe("switchSucursal", () => {
   const originalFetch = global.fetch;
@@ -231,5 +227,32 @@ describe("switchSucursal", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("http://api.test/auth/switch-sucursal");
     expect(JSON.parse(init.body as string)).toEqual({ sucursalId: NEW_SESSION.user.sucursalId });
+  });
+});
+
+describe("acceptInvitation", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("posts only token, name, and password to the public acceptance endpoint", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, NEW_SESSION));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await acceptInvitation("http://api.test", {
+      token: "opaque-invitation-token",
+      nombre: "María",
+      password: "correct-horse-battery-staple",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://api.test/auth/invitations/accept");
+    expect(JSON.parse(init.body as string)).toEqual({
+      token: "opaque-invitation-token",
+      nombre: "María",
+      password: "correct-horse-battery-staple",
+    });
   });
 });

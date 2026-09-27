@@ -29,7 +29,7 @@ export function NavLinks() {
   useEffect(() => setAdmin(isAdmin()), []);
   const links = admin ? [...LINKS, ...ADMIN_LINKS] : LINKS;
   return (
-    <nav className="flex gap-1">
+    <nav className="flex max-w-full flex-wrap gap-1" aria-label="Navegación principal">
       {links.map((link) => {
         const active = pathname === link.href;
         return (

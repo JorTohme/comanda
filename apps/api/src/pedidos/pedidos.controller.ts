@@ -14,5 +14,5 @@ export class PedidosController {
   @Roles(RolUsuario.admin, RolUsuario.mozo, RolUsuario.caja) @Post() create(@Body() dto: CreatePedidoDto, @CurrentUser() user: TenantContext) { return this.pedidosService.create(dto, user); }
   @Get() findAll(@CurrentUser() user: TenantContext) { return this.pedidosService.findAll(user); }
   @Get(":id") findOne(@Param("id") id: string, @CurrentUser() user: TenantContext) { return this.pedidosService.findOne(id, user); }
-  @Patch(":id/estado") updateEstado(@Param("id") id: string, @Body() dto: UpdateEstadoPedidoDto, @CurrentUser() user: TenantContext) { return this.pedidosService.updateEstado(id, dto.estado, user); }
+  @Roles(RolUsuario.admin, RolUsuario.mozo, RolUsuario.caja, RolUsuario.cocina) @Patch(":id/estado") updateEstado(@Param("id") id: string, @Body() dto: UpdateEstadoPedidoDto, @CurrentUser() user: TenantContext) { return this.pedidosService.updateEstado(id, dto.estado, user); }
 }
