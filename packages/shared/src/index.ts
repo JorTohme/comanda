@@ -1,10 +1,15 @@
 import { z } from "zod";
 import { io, type Socket } from "socket.io-client";
+import { tenantSchema, authSessionSchema, type AuthSession } from "./auth-contract";
+import { ApiError, SessionChangedError, clearSession, ensureFreshSession, getSessionGeneration, readSession, responseError } from "./session";
+
+export { tenantSchema, rolUsuarioSchema, authSessionSchema } from "./auth-contract";
+export type { TenantContext, RolUsuario, AuthSession } from "./auth-contract";
+export { ApiError, SessionChangedError, readSession, saveSession, clearSession, subscribeSession, getSessionGeneration, ensureFreshSession } from "./session";
 
 export const healthStatusSchema = z.object({ status: z.enum(["ok", "error"]) });
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
 
-const tenantSchema = z.object({ orgId: z.string().uuid(), sucursalId: z.string().uuid() });
 const timestampSchema = z.string().datetime();
 export const categoriaSchema = tenantSchema.extend({ id: z.string().uuid(), nombre: z.string(), createdAt: timestampSchema, updatedAt: timestampSchema });
 export type Categoria = z.infer<typeof categoriaSchema>;
@@ -101,7 +106,7 @@ export type AbrirTurnoInput = { montoInicial: number };
 export type CerrarTurnoInput = { montoDeclarado: number };
 export type CreateMovimientoInput = { tipo: TipoMovimientoCaja; monto: number; descripcion: string };
 export type CreateSucursalInput = { nombre: string };
-export interface ApiOptions { accessToken?: string; }
+export interface ApiOptions { accessToken?: string; signal?: AbortSignal; }
 
 // Static "what's next" chain for the client-side UX hint. Does not know about self-delivery
 // branching (listo -> en_camino) — the backend is the source of truth for valid transitions.
@@ -130,17 +135,9 @@ export function pesosToCentavos(pesos: string): number {
   return negative ? -total : total;
 }
 
-function readLocalStorage(): { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void } | undefined {
-  return (globalThis as { localStorage?: ReturnType<typeof readLocalStorage> }).localStorage;
-}
-
 function accessToken(options?: ApiOptions): string | undefined {
   if (options?.accessToken) return options.accessToken;
-  return readLocalStorage()?.getItem("comanda.accessToken") ?? undefined;
-}
-
-function storedRefreshToken(): string | undefined {
-  return readLocalStorage()?.getItem("comanda.refreshToken") ?? undefined;
+  return readSession()?.accessToken;
 }
 
 function headers(options?: ApiOptions, json = false): Record<string, string> {
@@ -149,13 +146,13 @@ function headers(options?: ApiOptions, json = false): Record<string, string> {
 }
 
 async function parseJsonOrThrow<T>(res: Response, schema: z.ZodType<T>, method: string, url: string): Promise<T> {
-  if (!res.ok) throw new Error(`Request failed: ${method} ${url} (${res.status})`);
+  if (!res.ok) throw responseError(res, method, url);
   const text = await res.text();
   return schema.parse(text === "" ? null : JSON.parse(text));
 }
 
 async function throwIfNotOk(res: Response, method: string, url: string): Promise<void> {
-  if (!res.ok) throw new Error(`Request failed: ${method} ${url} (${res.status})`);
+  if (!res.ok) throw responseError(res, method, url);
 }
 
 let sessionExpiredHandler: (() => void) | undefined;
@@ -165,36 +162,34 @@ export function setSessionExpiredHandler(handler: () => void): void {
 }
 
 function clearSessionAndNotify(): void {
-  const storage = readLocalStorage();
-  storage?.removeItem("comanda.accessToken");
-  storage?.removeItem("comanda.refreshToken");
-  storage?.removeItem("comanda.user");
+  clearSession();
   sessionExpiredHandler?.();
 }
 
-// Single-retry 401 interceptor: relies on the module-level stored tokens, so it only
-// engages when the caller didn't bring their own accessToken (those manage their own lifecycle).
 async function apiFetch(url: string, init: RequestInit, options?: ApiOptions): Promise<Response> {
-  const res = await fetch(url, { ...init, headers: headers(options, Boolean(init.body)) });
-  if (res.status !== 401 || options?.accessToken) return res;
-
-  const refresh = storedRefreshToken();
-  if (!refresh) {
-    clearSessionAndNotify();
+  const original = options?.accessToken ? null : readSession();
+  const initialGeneration = getSessionGeneration();
+  const request = () => fetch(url, { ...init, signal: options?.signal, headers: headers(options, Boolean(init.body)) });
+  const res = await request();
+  if (options?.accessToken) return res;
+  if (getSessionGeneration() !== initialGeneration) throw new SessionChangedError();
+  if (res.status !== 401) {
     return res;
   }
-
+  if (!original) return res;
+  const current = readSession();
+  if (!current || current.user.id !== original.user.id || current.user.orgId !== original.user.orgId || current.user.sucursalId !== original.user.sucursalId) {
+    throw new SessionChangedError();
+  }
   try {
-    const session = await refreshSession(new URL(url).origin, refresh);
-    const storage = readLocalStorage();
-    storage?.setItem("comanda.accessToken", session.accessToken);
-    storage?.setItem("comanda.refreshToken", session.refreshToken);
-    storage?.setItem("comanda.user", JSON.stringify(session.user));
-    const retry = await fetch(url, { ...init, headers: headers(options, Boolean(init.body)) });
+    await ensureFreshSession(new URL(url).origin, original.accessToken);
+    const retryGeneration = getSessionGeneration();
+    const retry = await request();
+    if (getSessionGeneration() !== retryGeneration) throw new SessionChangedError();
     if (retry.status === 401) clearSessionAndNotify();
     return retry;
   } catch (err) {
-    clearSessionAndNotify();
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) sessionExpiredHandler?.();
     throw err;
   }
 }
@@ -253,14 +248,6 @@ export async function obtenerReportesConsolidado(baseUrl: string, desde: string,
   return parseJsonOrThrow(await apiFetch(url, {}, options), reportesConsolidadoSchema, "GET", url);
 }
 
-export const rolUsuarioSchema = z.enum(["admin", "caja", "mozo", "cocina"]);
-export type RolUsuario = z.infer<typeof rolUsuarioSchema>;
-export const authSessionSchema = z.object({
-  accessToken: z.string().min(1),
-  refreshToken: z.string().min(1),
-  user: tenantSchema.extend({ id: z.string().uuid(), nombre: z.string(), email: z.string().email(), rol: rolUsuarioSchema }),
-});
-export type AuthSession = z.infer<typeof authSessionSchema>;
 export async function login(baseUrl: string, input: { email: string; password: string }): Promise<AuthSession> {
   const url = `${baseUrl}/auth/login`;
   return parseJsonOrThrow(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify(input) }), authSessionSchema, "POST", url);

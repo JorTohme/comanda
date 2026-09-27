@@ -1,11 +1,14 @@
 import {
   categoriaSchema,
   centavosToPesos,
+  clearSession,
   createCategoria,
   listCategorias,
   acceptInvitation,
   pesosToCentavos,
   posicionPorDefecto,
+  saveSession,
+  SessionChangedError,
   setSessionExpiredHandler,
   switchSucursal,
 } from "./index";
@@ -87,6 +90,7 @@ function fakeResponse(status: number, body?: unknown): Response {
     ok: status >= 200 && status < 300,
     status,
     text: async () => (body === undefined ? "" : JSON.stringify(body)),
+    json: async () => body,
   } as Response;
 }
 
@@ -110,7 +114,7 @@ const NEW_SESSION = {
     id: "00000000-0000-0000-0000-000000000001",
     nombre: "Ana",
     email: "ana@test.com",
-    rol: "admin",
+    rol: "admin" as const,
     orgId: "00000000-0000-0000-0000-000000000011",
     sucursalId: "00000000-0000-0000-0000-000000000012",
   },
@@ -127,7 +131,7 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
   });
 
   it("refreshes the session once on 401, updates storage, and retries the original request", async () => {
-    const storage = fakeStorage({ "comanda.accessToken": "old-token", "comanda.refreshToken": "old-refresh" });
+    const storage = fakeStorage({ "comanda.accessToken": "old-token", "comanda.refreshToken": "old-refresh", "comanda.user": JSON.stringify(NEW_SESSION.user) });
     (globalThis as { localStorage?: unknown }).localStorage = storage;
 
     const fetchMock = jest
@@ -142,12 +146,11 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1][0]).toBe("http://api.test/auth/refresh");
-    expect(storage.setItem).toHaveBeenCalledWith("comanda.accessToken", "new-access-token");
-    expect(storage.setItem).toHaveBeenCalledWith("comanda.refreshToken", "new-refresh-token");
+    expect(JSON.parse(storage.getItem("comanda.session")!)).toEqual(NEW_SESSION);
   });
 
   it("clears storage and notifies the session-expired handler when the refresh call itself fails", async () => {
-    const storage = fakeStorage({ "comanda.accessToken": "old-token", "comanda.refreshToken": "old-refresh" });
+    const storage = fakeStorage({ "comanda.accessToken": "old-token", "comanda.refreshToken": "old-refresh", "comanda.user": JSON.stringify(NEW_SESSION.user) });
     (globalThis as { localStorage?: unknown }).localStorage = storage;
     const handler = jest.fn();
     setSessionExpiredHandler(handler);
@@ -162,12 +165,13 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
 
     expect(storage.removeItem).toHaveBeenCalledWith("comanda.accessToken");
     expect(storage.removeItem).toHaveBeenCalledWith("comanda.refreshToken");
+    expect(storage.removeItem).toHaveBeenCalledWith("comanda.session");
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes without sending a client-controlled sucursal hint", async () => {
     const expiringToken = "old-access-token";
-    const storage = fakeStorage({ "comanda.accessToken": expiringToken, "comanda.refreshToken": "old-refresh" });
+    const storage = fakeStorage({ "comanda.accessToken": expiringToken, "comanda.refreshToken": "old-refresh", "comanda.user": JSON.stringify(NEW_SESSION.user) });
     (globalThis as { localStorage?: unknown }).localStorage = storage;
 
     const fetchMock = jest
@@ -183,8 +187,7 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     expect(JSON.parse(refreshInit.body as string)).toEqual({
       refreshToken: "old-refresh",
     });
-    const userCall = storage.setItem.mock.calls.find(([key]) => key === "comanda.user");
-    expect(userCall && JSON.parse(userCall[1])).toEqual(NEW_SESSION.user);
+    expect(JSON.parse(storage.getItem("comanda.session")!).user).toEqual(NEW_SESSION.user);
   });
 
   it("sends Content-Type: application/json on a write request (regression: apiFetch dropped this on the initial call)", async () => {
@@ -206,6 +209,98 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
   });
+
+  it("reads one canonical session and retries parallel 401s with one refresh", async () => {
+    const storage = fakeStorage({ "comanda.session": JSON.stringify({ ...NEW_SESSION, accessToken: "old-token", refreshToken: "old-refresh" }) });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(fakeResponse(401))
+      .mockResolvedValueOnce(fakeResponse(401))
+      .mockResolvedValueOnce(fakeResponse(200, NEW_SESSION))
+      .mockResolvedValue(fakeResponse(200, []));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await Promise.all([listCategorias("http://api.test"), listCategorias("http://api.test")]);
+
+    expect(result).toEqual([[], []]);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "http://api.test/auth/refresh")).toHaveLength(1);
+    expect(JSON.parse(storage.getItem("comanda.session")!)).toEqual(NEW_SESSION);
+    expect(storage.setItem).not.toHaveBeenCalledWith("comanda.accessToken", expect.any(String));
+  });
+
+  it("preserves a canonical session after transient refresh failure", async () => {
+    const old = { ...NEW_SESSION, accessToken: "old-token", refreshToken: "old-refresh" };
+    const storage = fakeStorage({ "comanda.session": JSON.stringify(old) });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    const handler = jest.fn();
+    setSessionExpiredHandler(handler);
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(fakeResponse(401))
+      .mockResolvedValueOnce(fakeResponse(503)) as unknown as typeof fetch;
+
+    await expect(listCategorias("http://api.test")).rejects.toMatchObject({ status: 503 });
+    expect(storage.getItem("comanda.session")).toBe(JSON.stringify(old));
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("passes the abort signal to authenticated requests", async () => {
+    const storage = fakeStorage({ "comanda.session": JSON.stringify(NEW_SESSION) });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    const controller = new AbortController();
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(200, []));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await listCategorias("http://api.test", { signal: controller.signal });
+
+    expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it("does not auto-refresh a caller-supplied token", async () => {
+    const storage = fakeStorage({ "comanda.session": JSON.stringify(NEW_SESSION) });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(401));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(listCategorias("http://api.test", { accessToken: "supplied" })).rejects.toMatchObject({ status: 401 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(storage.getItem("comanda.session")).not.toBeNull();
+  });
+
+  it("rejects a late successful response after logout", async () => {
+    const storage = fakeStorage({ "comanda.session": JSON.stringify(NEW_SESSION) });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    let resolve!: (res: Response) => void;
+    const fetchMock = jest.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done; }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const pending = listCategorias("http://api.test");
+    clearSession();
+    resolve(fakeResponse(200, []));
+
+    await expect(pending).rejects.toThrow("Session changed");
+  });
+
+  it("rejects an unauthenticated response that arrives after a new login", async () => {
+    (globalThis as { localStorage?: unknown }).localStorage = fakeStorage();
+    let resolve!: (res: Response) => void;
+    global.fetch = jest.fn().mockReturnValue(new Promise<Response>((done) => { resolve = done; })) as unknown as typeof fetch;
+    const pending = listCategorias("http://api.test");
+    saveSession(NEW_SESSION);
+    resolve(fakeResponse(200, []));
+
+    await expect(pending).rejects.toBeInstanceOf(SessionChangedError);
+  });
+
+  it("exposes a bounded Retry-After delay on HTTP errors", async () => {
+    const storage = fakeStorage({ "comanda.session": JSON.stringify(NEW_SESSION) });
+    (globalThis as { localStorage?: unknown }).localStorage = storage;
+    const throttled = fakeResponse(429);
+    Object.assign(throttled, { headers: { get: () => "7200" } });
+    global.fetch = jest.fn().mockResolvedValue(throttled) as unknown as typeof fetch;
+
+    await expect(listCategorias("http://api.test")).rejects.toMatchObject({ status: 429, retryAfterMs: 3_600_000 });
+  });
+
 });
 
 
