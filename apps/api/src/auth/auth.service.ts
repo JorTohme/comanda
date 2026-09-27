@@ -35,20 +35,27 @@ export class AuthService {
 
   async refresh(rawToken: string) {
     const tokenHash = hashRefreshToken(rawToken);
-    const existing = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
-    if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
-      throw new UnauthorizedException("Invalid or expired refresh token");
-    }
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const existing = await tx.refreshToken.findUnique({ where: { tokenHash } });
+      if (!existing || existing.revokedAt || existing.expiresAt <= now) {
+        throw new UnauthorizedException("Invalid or expired refresh token");
+      }
 
-    const consumed = await this.prisma.refreshToken.updateMany({
-      where: { id: existing.id, revokedAt: null },
-      data: { revokedAt: new Date() },
+      const consumed = await tx.refreshToken.updateMany({
+        where: { id: existing.id, revokedAt: null, expiresAt: { gt: now } },
+        data: { revokedAt: now },
+      });
+      if (consumed.count !== 1) throw new UnauthorizedException("Invalid or expired refresh token");
+
+      const user = await tx.usuario.findUnique({ where: { id: existing.usuarioId } });
+      if (!user) throw new UnauthorizedException("Invalid or expired refresh token");
+      const branch = await tx.sucursal.findFirst({
+        where: { id: existing.sucursalId, organizacionId: user.organizacionId },
+      });
+      if (!branch) throw new UnauthorizedException("Invalid or expired refresh token");
+      return this.session(user, existing.sucursalId, tx);
     });
-    if (consumed.count !== 1) throw new UnauthorizedException("Invalid or expired refresh token");
-
-    const user = await this.prisma.usuario.findUnique({ where: { id: existing.usuarioId } });
-    if (!user) throw new UnauthorizedException("Invalid or expired refresh token");
-    return this.session(user, existing.sucursalId);
   }
 
   async switchSucursal(usuarioId: string, callerOrgId: string, targetSucursalId: string) {

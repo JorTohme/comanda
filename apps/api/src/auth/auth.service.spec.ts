@@ -66,6 +66,114 @@ describe("AuthService", () => {
   });
 
   describe("refresh", () => {
+    const tokenRow = () => ({
+      id: "rt-1",
+      usuarioId: "user-1",
+      tokenHash: "hash",
+      sucursalId: "suc-2",
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+    });
+
+    it("rolls back token consumption when replacement creation fails", async () => {
+      const row = tokenRow();
+      let revoked = false;
+      const tx = {
+        refreshToken: {
+          findUnique: jest.fn().mockResolvedValue(row),
+          updateMany: jest.fn().mockImplementation(async () => { revoked = true; return { count: 1 }; }),
+          create: jest.fn().mockRejectedValue(new Error("insert failed")),
+        },
+        usuario: { findUnique: jest.fn().mockResolvedValue(user) },
+        sucursal: { findFirst: jest.fn().mockResolvedValue({ id: row.sucursalId }) },
+      };
+      prisma.refreshToken.findUnique.mockResolvedValue(row);
+      prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.refreshToken.create.mockRejectedValue(new Error("insert failed"));
+      prisma.$transaction.mockImplementationOnce(async (operation) => {
+        try { return await operation(tx); } catch (error) { revoked = false; throw error; }
+      });
+
+      await expect(service.refresh("some-raw-token")).rejects.toThrow("insert failed");
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(revoked).toBe(false);
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(tx.refreshToken.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("allows only one concurrent rotation and mints only one replacement", async () => {
+      const row = tokenRow();
+      let consumed = false;
+      const tx = {
+        refreshToken: {
+          findUnique: jest.fn().mockResolvedValue(row),
+          updateMany: jest.fn().mockImplementation(async () => {
+            if (consumed) return { count: 0 };
+            consumed = true;
+            return { count: 1 };
+          }),
+          create: jest.fn().mockResolvedValue({}),
+        },
+        usuario: { findUnique: jest.fn().mockResolvedValue(user) },
+        sucursal: { findFirst: jest.fn().mockResolvedValue({ id: row.sucursalId }) },
+      };
+      prisma.refreshToken.findUnique.mockResolvedValue(row);
+      prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.$transaction.mockImplementation(async (operation) => operation(tx));
+
+      const outcomes = await Promise.allSettled([
+        service.refresh("same-token"), service.refresh("same-token"),
+      ]);
+
+      expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
+      expect(tx.refreshToken.create).toHaveBeenCalledTimes(1);
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("rejects a refresh bound to a branch outside the current organization", async () => {
+      const row = tokenRow();
+      const tx = {
+        refreshToken: {
+          findUnique: jest.fn().mockResolvedValue(row),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          create: jest.fn(),
+        },
+        usuario: { findUnique: jest.fn().mockResolvedValue(user) },
+        sucursal: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      prisma.refreshToken.findUnique.mockResolvedValue(row);
+      prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.$transaction.mockImplementationOnce(async (operation) => operation(tx));
+
+      await expect(service.refresh("some-raw-token")).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(tx.sucursal.findFirst).toHaveBeenCalledWith({
+        where: { id: row.sucursalId, organizacionId: user.organizacionId },
+      });
+      expect(tx.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it("checks expiry in the conditional consume, not only in the initial read", async () => {
+      const row = tokenRow();
+      const tx = {
+        refreshToken: {
+          findUnique: jest.fn().mockResolvedValue(row),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          create: jest.fn(),
+        },
+        usuario: { findUnique: jest.fn() },
+        sucursal: { findFirst: jest.fn() },
+      };
+      prisma.refreshToken.findUnique.mockResolvedValue(row);
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+      prisma.$transaction.mockImplementationOnce(async (operation) => operation(tx));
+
+      await expect(service.refresh("some-raw-token")).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { id: row.id, revokedAt: null, expiresAt: { gt: expect.any(Date) } },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
     it("rotates a valid refresh token: revokes the old row and mints a new pair", async () => {
       const row = {
         id: "rt-1",
@@ -77,11 +185,12 @@ describe("AuthService", () => {
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.sucursal.findFirst.mockResolvedValue({ id: row.sucursalId });
 
       const result = await service.refresh("some-raw-token");
 
       expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
-        where: { id: row.id, revokedAt: null },
+        where: { id: row.id, revokedAt: null, expiresAt: { gt: expect.any(Date) } },
         data: { revokedAt: expect.any(Date) },
       });
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
@@ -130,10 +239,13 @@ describe("AuthService", () => {
       };
       prisma.refreshToken.findUnique.mockResolvedValue(row);
       prisma.usuario.findUnique.mockResolvedValue(user);
+      prisma.sucursal.findFirst.mockResolvedValue({ id: row.sucursalId });
 
       const result = await service.refresh("some-raw-token");
 
-      expect(prisma.sucursal.findFirst).not.toHaveBeenCalled();
+      expect(prisma.sucursal.findFirst).toHaveBeenCalledWith({
+        where: { id: row.sucursalId, organizacionId: user.organizacionId },
+      });
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ sucursalId: row.sucursalId }),
       });
