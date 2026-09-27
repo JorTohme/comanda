@@ -1,6 +1,6 @@
 # Audit remediation design
 
-Status: proposed; written-design approval and implementation-plan approval are required before product changes.
+Status: written design approved by the user on 2026-09-27; executable implementation plans await approval before product changes.
 
 ## Outcome
 
