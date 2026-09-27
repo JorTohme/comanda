@@ -6,6 +6,8 @@ import {
   listPedidos,
   listPlatos,
   posicionPorDefecto,
+  readSession,
+  subscribeSession,
   type AuthSession,
   type Mesa,
   type Pedido,
@@ -76,7 +78,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
     cargarDatos().finally(() => setCargando(false));
 
     const stopAutoSync = setupAutoSync(API_URL, { orgId: session.user.orgId, sucursalId: session.user.sucursalId }, (err) => setError(mensajeDeError(err)));
-    const socket = connectRealtime(API_URL, session.accessToken);
+    const socket = connectRealtime(API_URL);
     socket.on("pedido.actualizado", async (pedido: Pedido) => {
       const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.pedidos.upsert(pedido);
@@ -85,11 +87,19 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
       const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.mesas.upsert(mesa);
     });
+    const unsubscribe = subscribeSession(() => {
+      const current = readSession();
+      if (!current || current.user.id !== session.user.id || current.user.orgId !== session.user.orgId || current.user.sucursalId !== session.user.sucursalId) {
+        socket.disconnect();
+        stopAutoSync();
+      }
+    });
     return () => {
+      unsubscribe();
       socket.disconnect();
       stopAutoSync();
     };
-  }, []);
+  }, [session.user.id, session.user.orgId, session.user.sucursalId]);
 
   function handleAgregarFila() {
     setForm({ ...form, items: [...form.items, { ...ITEM_VACIO }] });

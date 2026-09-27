@@ -2,7 +2,7 @@
 
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { acceptInvitation } from "@comanda/shared";
+import { acceptInvitation, getSessionGeneration, saveSession } from "@comanda/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -29,11 +29,14 @@ function InvitationForm() {
     }
 
     setSubmitting(true);
+    const generation = getSessionGeneration();
     try {
       const session = await acceptInvitation(API_URL, { token, nombre, password });
-      window.localStorage.setItem("comanda.accessToken", session.accessToken);
-      window.localStorage.setItem("comanda.refreshToken", session.refreshToken);
-      window.localStorage.setItem("comanda.user", JSON.stringify(session.user));
+      if (generation !== getSessionGeneration()) {
+        setError("La sesión cambió durante la activación. Iniciá sesión para continuar.");
+        return;
+      }
+      saveSession(session);
       router.replace("/");
       router.refresh();
     } catch {

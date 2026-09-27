@@ -7,7 +7,10 @@ import {
   deleteMesa,
   listMesas,
   posicionPorDefecto,
+  readSession,
+  subscribeSession,
   updateMesa,
+  updateEstadoMesa,
   type EstadoMesa,
   type FormaMesa,
   type Mesa,
@@ -17,6 +20,7 @@ import { ErrorBanner } from "../_components/ErrorBanner";
 import { Card } from "../_components/Card";
 import { Button } from "../_components/Button";
 import { Badge } from "../_components/Badge";
+import { useSession } from "../_components/useSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -56,6 +60,9 @@ function posicionMesa(mesa: Mesa, index: number): { x: number; y: number } {
 }
 
 export default function SalonPage() {
+  const { session } = useSession();
+  const isAdmin = session?.user.rol === "admin";
+  const canOperateTables = isAdmin || session?.user.rol === "mozo";
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [form, setForm] = useState(FORM_VACIO);
   const [editandoMesaId, setEditandoMesaId] = useState<string | null>(null);
@@ -74,9 +81,7 @@ export default function SalonPage() {
       .catch((err: unknown) => setError(mensajeDeError(err)))
       .finally(() => setCargando(false));
 
-    const token = window.localStorage.getItem("comanda.accessToken");
-    if (!token) return;
-    const socket = connectRealtime(API_URL, token);
+    const socket = connectRealtime(API_URL);
     socket.on("mesa.actualizada", (mesa: Mesa) => {
       setMesas((prev) => {
         const idx = prev.findIndex((m) => m.id === mesa.id);
@@ -84,17 +89,21 @@ export default function SalonPage() {
         return prev.map((m) => (m.id === mesa.id ? mesa : m));
       });
     });
+    const unsubscribe = subscribeSession(() => {
+      const current = readSession();
+      if (!current || current.user.id !== session?.user.id || current.user.orgId !== session?.user.orgId || current.user.sucursalId !== session?.user.sucursalId) socket.disconnect();
+    });
     return () => {
+      unsubscribe();
       socket.disconnect();
     };
-  }, []);
+  }, [session?.user.id, session?.user.orgId, session?.user.sucursalId]);
 
   async function handleCiclarEstado(mesa: Mesa) {
+    if (!canOperateTables) return;
     setError(null);
     try {
-      const actualizada = await updateMesa(API_URL, mesa.id, {
-        estado: SIGUIENTE_ESTADO[mesa.estado],
-      });
+      const actualizada = await updateEstadoMesa(API_URL, mesa.id, SIGUIENTE_ESTADO[mesa.estado]);
       setMesas(mesas.map((m) => (m.id === actualizada.id ? actualizada : m)));
     } catch (err) {
       setError(mensajeDeError(err));
@@ -102,6 +111,7 @@ export default function SalonPage() {
   }
 
   function handlePointerDownMesa(e: React.PointerEvent, mesa: Mesa, pos: { x: number; y: number }) {
+    if (!isAdmin) return;
     (e.target as Element).setPointerCapture(e.pointerId);
     arrastreRef.current = { id: mesa.id, startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, movido: false };
   }
@@ -121,7 +131,10 @@ export default function SalonPage() {
   async function handlePointerUpMesa(mesa: Mesa) {
     const arr = arrastreRef.current;
     arrastreRef.current = null;
-    if (!arr) return;
+    if (!arr) {
+      if (canOperateTables) await handleCiclarEstado(mesa);
+      return;
+    }
     if (arr.movido) {
       const destino = posicionArrastre?.id === mesa.id ? posicionArrastre : null;
       setPosicionArrastre(null);
@@ -140,6 +153,7 @@ export default function SalonPage() {
 
   async function handleSubmitMesa(e: React.FormEvent) {
     e.preventDefault();
+    if (!isAdmin) return;
     setError(null);
     const input = {
       nombre: form.nombre,
@@ -165,6 +179,7 @@ export default function SalonPage() {
   }
 
   function handleEditarMesa(mesa: Mesa) {
+    if (!isAdmin) return;
     setEditandoMesaId(mesa.id);
     setForm({
       nombre: mesa.nombre,
@@ -182,6 +197,7 @@ export default function SalonPage() {
   }
 
   async function handleEliminarMesa(id: string) {
+    if (!isAdmin) return;
     setError(null);
     try {
       await deleteMesa(API_URL, id);
@@ -222,7 +238,7 @@ export default function SalonPage() {
                 key={mesa.id}
                 onPointerDown={(e) => handlePointerDownMesa(e, mesa, pos)}
                 onPointerUp={() => handlePointerUpMesa(mesa)}
-                className={`absolute flex cursor-grab select-none flex-col items-center justify-center border-2 p-1 text-center text-xs font-medium shadow-card active:cursor-grabbing ${tone.classes} ${mesa.forma === "circle" ? "rounded-full" : "rounded-lg"}`}
+                className={`absolute flex select-none flex-col items-center justify-center border-2 p-1 text-center text-xs font-medium shadow-card ${isAdmin ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${tone.classes} ${mesa.forma === "circle" ? "rounded-full" : "rounded-lg"}`}
                 style={{
                   left: `${pos.x}%`,
                   top: `${pos.y}%`,
@@ -242,7 +258,8 @@ export default function SalonPage() {
             <button
               key={mesa.id}
               type="button"
-              onClick={() => handleEditarMesa(mesa)}
+              disabled={!isAdmin}
+              onClick={() => { if (isAdmin) handleEditarMesa(mesa); }}
               className="inline-flex items-center gap-2 rounded-full border border-hairline bg-bg px-3 py-1.5 text-xs text-ink hover:border-accent"
             >
               {mesa.nombre}
@@ -252,7 +269,7 @@ export default function SalonPage() {
         </div>
       </section>
 
-      <Card className="space-y-4">
+      {isAdmin && <Card className="space-y-4">
         <h2 className="font-serif text-lg font-semibold text-ink">{editandoMesaId ? "Editar mesa" : "Agregar mesa"}</h2>
         <form className="flex flex-wrap items-end gap-3" onSubmit={handleSubmitMesa}>
           <input
@@ -318,7 +335,7 @@ export default function SalonPage() {
             </>
           )}
         </form>
-      </Card>
+      </Card>}
     </div>
   );
 }

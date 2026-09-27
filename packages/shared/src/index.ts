@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { io, type Socket } from "socket.io-client";
-import { tenantSchema, authSessionSchema, type AuthSession } from "./auth-contract";
+import { tenantSchema, authSessionSchema, type AuthSession, type RolUsuario } from "./auth-contract";
 import { ApiError, SessionChangedError, clearSession, ensureFreshSession, getSessionGeneration, readSession, responseError } from "./session";
 
 export { tenantSchema, rolUsuarioSchema, authSessionSchema } from "./auth-contract";
@@ -140,6 +140,14 @@ function accessToken(options?: ApiOptions): string | undefined {
   return readSession()?.accessToken;
 }
 
+export function canActOnPedido(rol: RolUsuario, destino: EstadoPedido): boolean {
+  if (destino === "cobrado") return false;
+  if (rol === "admin") return true;
+  if (rol === "cocina") return destino === "en_preparacion" || destino === "listo";
+  if (rol === "mozo") return destino === "enviado_a_cocina" || destino === "en_camino" || destino === "entregado";
+  return destino === "enviado_a_cocina" || destino === "en_camino" || destino === "entregado" || destino === "cerrado";
+}
+
 function headers(options?: ApiOptions, json = false): Record<string, string> {
   const token = accessToken(options);
   return { ...(json ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
@@ -202,10 +210,12 @@ export async function deleteCategoria(baseUrl: string, id: string, options?: Api
 export async function listPlatos(baseUrl: string, categoriaId?: string, options?: ApiOptions): Promise<Plato[]> { const url = categoriaId ? `${baseUrl}/platos?categoriaId=${encodeURIComponent(categoriaId)}` : `${baseUrl}/platos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(platoSchema), "GET", url); }
 export async function createPlato(baseUrl: string, input: CreatePlatoInput, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), platoSchema, "POST", url); }
 export async function updatePlato(baseUrl: string, id: string, input: UpdatePlatoInput, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos/${id}`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), platoSchema, "PATCH", url); }
+export async function updateDisponibilidadPlato(baseUrl: string, id: string, disponible: boolean, options?: ApiOptions): Promise<Plato> { const url = `${baseUrl}/platos/${id}/disponibilidad`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify({ disponible }) }, options), platoSchema, "PATCH", url); }
 export async function deletePlato(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/platos/${id}`; return throwIfNotOk(await apiFetch(url, { method: "DELETE" }, options), "DELETE", url); }
 export async function listMesas(baseUrl: string, options?: ApiOptions): Promise<Mesa[]> { const url = `${baseUrl}/mesas`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(mesaSchema), "GET", url); }
 export async function createMesa(baseUrl: string, input: CreateMesaInput, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), mesaSchema, "POST", url); }
 export async function updateMesa(baseUrl: string, id: string, input: UpdateMesaInput, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas/${id}`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify(input) }, options), mesaSchema, "PATCH", url); }
+export async function updateEstadoMesa(baseUrl: string, id: string, estado: EstadoMesa, options?: ApiOptions): Promise<Mesa> { const url = `${baseUrl}/mesas/${id}/estado`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify({ estado }) }, options), mesaSchema, "PATCH", url); }
 export async function deleteMesa(baseUrl: string, id: string, options?: ApiOptions): Promise<void> { const url = `${baseUrl}/mesas/${id}`; return throwIfNotOk(await apiFetch(url, { method: "DELETE" }, options), "DELETE", url); }
 export async function listPedidos(baseUrl: string, options?: ApiOptions): Promise<Pedido[]> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(pedidoSchema), "GET", url); }
 export async function createPedido(baseUrl: string, input: CreatePedidoInput, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), pedidoSchema, "POST", url); }
@@ -271,6 +281,21 @@ export async function switchSucursal(baseUrl: string, sucursalId: string, option
 }
 
 export type { Socket };
-export function connectRealtime(baseUrl: string, accessToken: string): Socket {
-  return io(baseUrl, { auth: { token: accessToken }, transports: ["websocket"] });
+export function connectRealtime(baseUrl: string): Socket {
+  const socket = io(baseUrl, {
+    autoConnect: false,
+    auth: (done) => {
+      void ensureFreshSession(baseUrl).then(
+        (session) => done({ token: session.accessToken }),
+        () => socket.disconnect(),
+      );
+    },
+    transports: ["websocket"],
+    reconnectionAttempts: 5,
+  });
+  socket.on("disconnect", (reason) => {
+    if (reason === "io server disconnect" && readSession()) socket.connect();
+  });
+  socket.connect();
+  return socket;
 }

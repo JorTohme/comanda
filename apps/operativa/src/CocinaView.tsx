@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { avanzarEstadoPedido, connectRealtime, listPedidos, listPlatos, updatePlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
+import { avanzarEstadoPedido, connectRealtime, listPedidos, listPlatos, readSession, subscribeSession, updateDisponibilidadPlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
 import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
 import { getDb } from "./db/schema";
@@ -33,7 +33,7 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
   useEffect(() => {
     cargarDatos().finally(() => setCargando(false));
 
-    const socket = connectRealtime(API_URL, session.accessToken);
+    const socket = connectRealtime(API_URL);
     socket.on("pedido.actualizado", async (pedido: Pedido) => {
       const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.pedidos.upsert(pedido);
@@ -42,10 +42,17 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
       const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.platos.upsert(plato);
     });
+    const unsubscribe = subscribeSession(() => {
+      const current = readSession();
+      if (!current || current.user.id !== session.user.id || current.user.orgId !== session.user.orgId || current.user.sucursalId !== session.user.sucursalId) {
+        socket.disconnect();
+      }
+    });
     return () => {
+      unsubscribe();
       socket.disconnect();
     };
-  }, []);
+  }, [session.user.id, session.user.orgId, session.user.sucursalId]);
 
   async function handleAvanzar(pedidoId: string, estado: "en_preparacion" | "listo") {
     setError(null);
@@ -63,7 +70,7 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
     const db = await getDb(session.user.orgId, session.user.sucursalId);
     await db.collections.platos.upsert({ ...plato, disponible: !plato.disponible });
     try {
-      const actualizado = await updatePlato(API_URL, plato.id, { disponible: !plato.disponible });
+      const actualizado = await updateDisponibilidadPlato(API_URL, plato.id, !plato.disponible);
       await db.collections.platos.upsert(actualizado);
     } catch (err) {
       await db.collections.platos.upsert(plato);

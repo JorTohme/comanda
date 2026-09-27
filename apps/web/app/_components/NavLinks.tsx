@@ -1,33 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "./useSession";
 
+const LINKS_BY_ROLE = {
+  admin: ["/catalogo", "/salon", "/pedidos", "/caja", "/reportes", "/sucursales"],
+  caja: ["/pedidos", "/caja"],
+  mozo: ["/salon", "/pedidos"],
+  cocina: ["/catalogo", "/pedidos"],
+} as const;
 const LINKS = [
   { href: "/catalogo", label: "Catálogo" },
   { href: "/salon", label: "Salón" },
   { href: "/pedidos", label: "Pedidos" },
   { href: "/caja", label: "Caja" },
   { href: "/reportes", label: "Reportes" },
+  { href: "/sucursales", label: "Sucursales" },
 ];
-
-const ADMIN_LINKS = [{ href: "/sucursales", label: "Sucursales" }];
-
-function isAdmin(): boolean {
-  try {
-    const raw = window.localStorage.getItem("comanda.user");
-    return raw ? (JSON.parse(raw) as { rol?: string }).rol === "admin" : false;
-  } catch {
-    return false;
-  }
-}
 
 export function NavLinks() {
   const pathname = usePathname();
-  const [admin, setAdmin] = useState(false);
-  useEffect(() => setAdmin(isAdmin()), []);
-  const links = admin ? [...LINKS, ...ADMIN_LINKS] : LINKS;
+  const { session } = useSession();
+  const allowed: readonly string[] = session ? LINKS_BY_ROLE[session.user.rol] : [];
+  const links = LINKS.filter((link) => allowed.includes(link.href));
   return (
     <nav className="flex max-w-full flex-wrap gap-1" aria-label="Navegación principal">
       {links.map((link) => {

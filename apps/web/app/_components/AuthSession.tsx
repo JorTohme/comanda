@@ -1,51 +1,44 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { login, logout, setSessionExpiredHandler } from "@comanda/shared";
-import { useAuthenticated } from "./useAuthenticated";
+import { FormEvent, useState } from "react";
+import { clearSession, getSessionGeneration, login, logout, readSession, saveSession } from "@comanda/shared";
+import { useSession } from "./useSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-function clearSession() {
-  window.localStorage.removeItem("comanda.accessToken");
-  window.localStorage.removeItem("comanda.refreshToken");
-  window.localStorage.removeItem("comanda.user");
-  window.location.reload();
-}
-
 export function AuthSession() {
-  const authState = useAuthenticated();
+  const { ready, session: currentSession } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => setSessionExpiredHandler(clearSession), []);
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    const generation = getSessionGeneration();
     try {
       const session = await login(API_URL, { email, password });
-      window.localStorage.setItem("comanda.accessToken", session.accessToken);
-      window.localStorage.setItem("comanda.refreshToken", session.refreshToken);
-      window.localStorage.setItem("comanda.user", JSON.stringify(session.user));
-      window.location.reload();
+      if (generation !== getSessionGeneration()) {
+        setError("La sesión cambió mientras se iniciaba. Volvé a intentarlo.");
+        return;
+      }
+      saveSession(session);
     } catch {
       setError("No se pudo iniciar sesión.");
     }
   }
 
-  if (authState === "unknown") return null;
+  if (!ready) return null;
 
-  if (authState === "authenticated")
+  if (currentSession)
     return (
       <button
         type="button"
         className="text-sm font-medium text-muted hover:text-ink"
         onClick={() => {
-          const refreshToken = window.localStorage.getItem("comanda.refreshToken");
-          const done = refreshToken ? logout(API_URL, refreshToken).catch(() => {}) : Promise.resolve();
-          done.finally(clearSession);
+          const refreshToken = readSession()?.refreshToken;
+          clearSession();
+          if (refreshToken) void logout(API_URL, refreshToken).catch(() => {});
         }}
       >
         Cerrar sesión

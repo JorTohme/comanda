@@ -118,14 +118,19 @@ La API protege todas las rutas excepto `GET /health` y `POST /auth/*` con el gua
 ### Bootstrap local
 
 1. Configurá `DATABASE_URL` y un `JWT_SECRET` de alta entropía (el fallback de desarrollo es sólo para trabajo local).
-2. Ejecutá `pnpm --filter api exec prisma migrate dev`.
-3. Creá el primer tenant con `POST /auth/register`:
-   ```json
-   {"organizacionNombre":"Mi local","sucursalNombre":"Centro","nombre":"Admin","email":"admin@example.com","password":"at-least-12-chars","rol":"admin"}
-   ```
-4. La respuesta contiene `accessToken`. El header web inicia sesión por `POST /auth/login`, guarda el token en el almacenamiento local del navegador y el cliente compartido lo adjunta como `Authorization: Bearer ...`.
+2. Aplicá las migraciones con `pnpm --filter api exec prisma migrate dev`.
+3. Creá la organización, su primera sucursal y una invitación de administrador con `pnpm --filter api invite-admin -- --org <nombre> --branch <nombre> --email <email>`. El comando imprime un enlace de activación de un solo uso; la persona invitada define su nombre y contraseña en `/invitacion`. No existe un registro público.
+4. Después de activar la cuenta, el acceso se inicia por `POST /auth/login`. El cliente compartido persiste la sesión validada y adjunta su access token como `Authorization: Bearer ...`.
 
-`admin`, `caja`, `mozo` y `cocina` viajan en el token. La autorización actual establece aislamiento autenticado por tenant; los permisos de cada endpoint no se infieren todavía y deben agregarse con un role guard cuando exista una matriz de roles definida.
+### Sesión de navegador y realtime
+
+`packages/shared` es el único dueño de la sesión del navegador para `web` y `operativa`. Persiste el objeto validado completo bajo `comanda.session`; los frontends no escriben tokens o datos de usuario por separado. Si la clave canónica todavía no existe, la primera lectura intenta migrar `comanda.accessToken`, `comanda.refreshToken` y `comanda.user` sólo cuando las tres claves forman una sesión válida. La migración escribe primero la sesión canónica y luego elimina las claves anteriores; datos incompletos o inválidos no se consideran una sesión autenticada. Si ya existe la clave canónica, esa es la fuente de verdad.
+
+El cliente coordina renovaciones dentro de una pestaña con una promesa compartida (*singleflight*) por origen y refresh token. En navegadores que implementan Web Locks, usa el lock de origen `comanda.session.refresh`; dentro del lock vuelve a leer la sesión para reutilizar un refresh token más nuevo en vez de consumir uno ya rotado. Sin Web Locks, sólo queda garantizada la coordinación dentro de esa pestaña. Los cambios de sesión se notifican a los componentes del mismo documento y a otras pestañas mediante `storage`. Los errores transitorios de red/servidor conservan la sesión; una respuesta de refresh `401`/`403` la invalida. Los callbacks de red pendientes se descartan si entretanto cambió la generación o la identidad (usuario, organización o sucursal) de la sesión.
+
+Cada conexión o reconexión Socket.io obtiene sus credenciales de la sesión vigente mediante un callback de `auth`; no captura el token de la sesión con la que se montó originalmente la pantalla. Al cerrar sesión o cambiar la identidad/tenant, el componente que posee el socket lo desconecta. En el servidor, el gateway verifica `exp`, rechaza tokens sin vencimiento válido y programa la desconexión del socket cuando vence el access token; si el cliente se desconecta antes, limpia ese temporizador.
+
+`admin`, `caja`, `mozo` y `cocina` viajan en el token. La API valida la identidad y el tenant, y aplica la autorización real en guards y servicios —incluidas las transiciones de pedidos—; ocultar botones, rutas o formularios por rol sólo mejora la interfaz y nunca reemplaza el control del backend. `CurrentUser` proyecta únicamente `{orgId, sucursalId}` para consultas de negocio; los handlers que necesitan actuar según el rol reciben el actor autenticado por separado.
 
 ### Migración de datos y contratos
 

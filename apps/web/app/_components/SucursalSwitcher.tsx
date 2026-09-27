@@ -1,45 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listSucursales, switchSucursal, type Sucursal } from "@comanda/shared";
-import { useAuthenticated } from "./useAuthenticated";
+import { listSucursales, readSession, saveSession, switchSucursal, type Sucursal } from "@comanda/shared";
+import { useSession } from "./useSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-function currentUser(): { rol: string; sucursalId?: string } | null {
-  try {
-    const raw = window.localStorage.getItem("comanda.user");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function SucursalSwitcher() {
-  const authState = useAuthenticated();
+  const { session } = useSession();
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [currentSucursalId, setCurrentSucursalId] = useState("");
 
   useEffect(() => {
-    // Wait for a confirmed token, not just a stored rol: a stale comanda.user surviving
-    // an invalid/expired token would otherwise fire this fetch and guarantee a 401.
-    if (authState !== "authenticated") return;
-    const user = currentUser();
-    if (user?.rol !== "admin") return;
+    if (session?.user.rol !== "admin") {
+      setSucursales([]);
+      return;
+    }
+    let active = true;
     listSucursales(API_URL)
-      .then(setSucursales)
+      .then((rows) => { if (active) setSucursales(rows); })
       .catch(() => {});
-    if (user.sucursalId) setCurrentSucursalId(user.sucursalId);
-  }, [authState]);
+    setCurrentSucursalId(session.user.sucursalId);
+    return () => { active = false; };
+  }, [session?.user.id, session?.user.orgId, session?.user.sucursalId, session?.user.rol]);
 
   if (sucursales.length <= 1) return null;
 
   async function handleChange(sucursalId: string) {
+    const source = readSession();
+    if (!source || source.user.rol !== "admin") return;
     const session = await switchSucursal(API_URL, sucursalId).catch(() => null);
     if (!session) return;
-    window.localStorage.setItem("comanda.accessToken", session.accessToken);
-    window.localStorage.setItem("comanda.refreshToken", session.refreshToken);
-    window.localStorage.setItem("comanda.user", JSON.stringify(session.user));
+    const current = readSession();
+    if (!current || current.user.id !== source.user.id || current.user.orgId !== source.user.orgId || current.user.sucursalId !== source.user.sucursalId) return;
+    saveSession(session);
     window.location.reload();
   }
 

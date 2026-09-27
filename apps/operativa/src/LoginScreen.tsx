@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { login, type AuthSession } from "@comanda/shared";
+import { getSessionGeneration, login, type AuthSession } from "@comanda/shared";
 import { API_URL } from "./config";
 import { ErrorBanner } from "./_components/ErrorBanner";
 
@@ -13,8 +13,10 @@ export function LoginScreen({ onLogin }: { onLogin: (session: AuthSession) => vo
     event.preventDefault();
     setError(null);
     setCargando(true);
+    const generation = getSessionGeneration();
     try {
       const session = await login(API_URL, { email, password });
+      if (generation !== getSessionGeneration()) return;
       onLogin(session);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");

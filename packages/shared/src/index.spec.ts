@@ -1,3 +1,6 @@
+const mockIo = jest.fn();
+jest.mock("socket.io-client", () => ({ io: (...args: unknown[]) => mockIo(...args) }));
+
 import {
   categoriaSchema,
   centavosToPesos,
@@ -11,6 +14,10 @@ import {
   SessionChangedError,
   setSessionExpiredHandler,
   switchSucursal,
+  canActOnPedido,
+  connectRealtime,
+  updateDisponibilidadPlato,
+  updateEstadoMesa,
 } from "./index";
 
 describe("centavosToPesos", () => {
@@ -349,5 +356,72 @@ describe("acceptInvitation", () => {
       nombre: "María",
       password: "correct-horse-battery-staple",
     });
+  });
+});
+
+describe("client action policy", () => {
+  it("allows only roles that can perform the requested order transition", () => {
+    expect(canActOnPedido("cocina", "en_preparacion")).toBe(true);
+    expect(canActOnPedido("cocina", "cobrado")).toBe(false);
+    expect(canActOnPedido("mozo", "entregado")).toBe(true);
+    expect(canActOnPedido("mozo", "cerrado")).toBe(false);
+    expect(canActOnPedido("caja", "cerrado")).toBe(true);
+  });
+});
+
+describe("realtime authentication", () => {
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+  afterEach(() => {
+    clearSession();
+    mockIo.mockReset();
+    (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
+  });
+
+  it("reads the live session when Socket.IO requests handshake auth", async () => {
+    const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 600 })).replace(/=/g, "");
+    const latestSession = { ...NEW_SESSION, accessToken: `header.${payload}.signature` };
+    (globalThis as { localStorage?: unknown }).localStorage = fakeStorage();
+    saveSession(latestSession);
+    const socket = { connect: jest.fn(), disconnect: jest.fn(), on: jest.fn() };
+    mockIo.mockReturnValue(socket);
+
+    (connectRealtime as unknown as (baseUrl: string) => unknown)("http://api.test");
+    const options = mockIo.mock.calls[0][1] as { auth: (done: (value: unknown) => void) => void; autoConnect: boolean };
+    const handshake = new Promise<unknown>((resolve) => options.auth(resolve));
+
+    await expect(handshake).resolves.toEqual({ token: latestSession.accessToken });
+    expect(options.autoConnect).toBe(false);
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+
+    const renewedToken = `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 900 })).replace(/=/g, "")}.signature`;
+    const renewedSession = { ...latestSession, accessToken: renewedToken, refreshToken: "new-refresh-token" };
+    saveSession(renewedSession);
+    const disconnected = socket.on.mock.calls.find(([event]) => event === "disconnect")?.[1] as (reason: string) => void;
+    disconnected("io server disconnect");
+    expect(socket.connect).toHaveBeenCalledTimes(2);
+    const reconnectAuth = new Promise<unknown>((resolve) => options.auth(resolve));
+    await expect(reconnectAuth).resolves.toEqual({ token: renewedToken });
+  });
+});
+
+describe("role-specific update endpoints", () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it("uses the dedicated availability and occupancy endpoints", async () => {
+    const tenant = { orgId: NEW_SESSION.user.orgId, sucursalId: NEW_SESSION.user.sucursalId };
+    const base = { createdAt: "2026-09-27T00:00:00.000Z", updatedAt: "2026-09-27T00:00:00.000Z" };
+    const plato = { ...base, ...tenant, id: "00000000-0000-0000-0000-000000000021", nombre: "Tarta", precio: 1200, disponible: false, categoriaId: "00000000-0000-0000-0000-000000000022" };
+    const mesa = { ...base, ...tenant, id: "00000000-0000-0000-0000-000000000023", nombre: "1", capacidad: 4, estado: "ocupada" as const };
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, plato)).mockResolvedValueOnce(fakeResponse(200, mesa));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await updateDisponibilidadPlato("http://api.test", plato.id, false);
+    await updateEstadoMesa("http://api.test", mesa.id, "ocupada");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `http://api.test/platos/${plato.id}/disponibilidad`,
+      `http://api.test/mesas/${mesa.id}/estado`,
+    ]);
   });
 });

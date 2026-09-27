@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   avanzarEstadoPedido,
+  canActOnPedido,
   centavosToPesos,
   createPedido,
   listMesas,
@@ -20,6 +21,7 @@ import { ErrorBanner } from "../_components/ErrorBanner";
 import { Card } from "../_components/Card";
 import { Button } from "../_components/Button";
 import { Badge } from "../_components/Badge";
+import { useSession } from "../_components/useSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -76,6 +78,9 @@ const FORM_VACIO: {
 };
 
 export default function PedidosPage() {
+  const { session } = useSession();
+  const rol = session?.user.rol;
+  const puedeCrear = rol === "admin" || rol === "caja" || rol === "mozo";
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [platos, setPlatos] = useState<Plato[]>([]);
@@ -124,6 +129,7 @@ export default function PedidosPage() {
 
   async function handleSubmitPedido(e: React.FormEvent) {
     e.preventDefault();
+    if (!puedeCrear) return;
     setError(null);
     const input = {
       tipoServicio: form.tipoServicio,
@@ -146,7 +152,7 @@ export default function PedidosPage() {
 
   async function handleAvanzar(pedido: Pedido) {
     const siguiente = siguienteEstadoPedido(pedido);
-    if (!siguiente) return;
+    if (!siguiente || !rol || !canActOnPedido(rol, siguiente)) return;
     setError(null);
     try {
       const actualizado = await avanzarEstadoPedido(API_URL, pedido.id, siguiente);
@@ -173,7 +179,7 @@ export default function PedidosPage() {
 
       <ErrorBanner message={error} />
 
-      <Card className="space-y-4">
+      {puedeCrear && <Card className="space-y-4">
         <h2 className="font-serif text-lg font-semibold text-ink">Nuevo pedido</h2>
         <form className="space-y-3" onSubmit={handleSubmitPedido}>
           <div className="flex flex-wrap gap-3">
@@ -280,7 +286,7 @@ export default function PedidosPage() {
 
           <Button type="submit">Crear pedido</Button>
         </form>
-      </Card>
+      </Card>}
 
       <section className="space-y-4">
         <h2 className="font-serif text-lg font-semibold text-ink">Pedidos</h2>
@@ -301,7 +307,7 @@ export default function PedidosPage() {
                   ))}
                 </ul>
                 <p className="mt-2 font-medium text-ink">Total: {centavosToPesos(totalPedido(pedido))}</p>
-                {siguiente && (
+                {siguiente && rol && canActOnPedido(rol, siguiente) && (
                   <Button size="sm" className="mt-3" onClick={() => handleAvanzar(pedido)}>
                     Avanzar a {LABEL_ESTADO_PEDIDO[siguiente]}
                   </Button>

@@ -11,6 +11,7 @@ import {
   listPlatos,
   pesosToCentavos,
   updatePlato,
+  updateDisponibilidadPlato,
   type Categoria,
   type Plato,
 } from "@comanda/shared";
@@ -19,6 +20,7 @@ import { ErrorBanner } from "../_components/ErrorBanner";
 import { Card } from "../_components/Card";
 import { Button } from "../_components/Button";
 import { Badge } from "../_components/Badge";
+import { useSession } from "../_components/useSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -28,6 +30,8 @@ const INPUT_CLASSES =
   "rounded-full border border-hairline bg-bg px-4 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 export default function CatalogoPage() {
+  const { session } = useSession();
+  const isAdmin = session?.user.rol === "admin";
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [platos, setPlatos] = useState<Plato[]>([]);
   const [form, setForm] = useState(FORM_VACIO);
@@ -48,6 +52,7 @@ export default function CatalogoPage() {
 
   async function handleCrearCategoria(e: React.FormEvent) {
     e.preventDefault();
+    if (!isAdmin) return;
     setError(null);
     try {
       const categoria = await createCategoria(API_URL, { nombre: nuevaCategoria });
@@ -59,6 +64,7 @@ export default function CatalogoPage() {
   }
 
   async function handleEliminarCategoria(id: string) {
+    if (!isAdmin) return;
     setError(null);
     try {
       await deleteCategoria(API_URL, id);
@@ -70,6 +76,7 @@ export default function CatalogoPage() {
 
   async function handleSubmitPlato(e: React.FormEvent) {
     e.preventDefault();
+    if (!isAdmin) return;
     setError(null);
     const input = {
       nombre: form.nombre,
@@ -93,6 +100,7 @@ export default function CatalogoPage() {
   }
 
   function handleEditarPlato(plato: Plato) {
+    if (!isAdmin) return;
     setEditandoPlatoId(plato.id);
     setForm({
       nombre: plato.nombre,
@@ -108,9 +116,10 @@ export default function CatalogoPage() {
   }
 
   async function handleToggleDisponible(plato: Plato) {
+    if (session?.user.rol !== "admin" && session?.user.rol !== "cocina") return;
     setError(null);
     try {
-      const actualizado = await updatePlato(API_URL, plato.id, { disponible: !plato.disponible });
+      const actualizado = await updateDisponibilidadPlato(API_URL, plato.id, !plato.disponible);
       setPlatos(platos.map((p) => (p.id === actualizado.id ? actualizado : p)));
     } catch (err) {
       setError(mensajeDeError(err));
@@ -118,6 +127,7 @@ export default function CatalogoPage() {
   }
 
   async function handleEliminarPlato(id: string) {
+    if (!isAdmin) return;
     setError(null);
     try {
       await deletePlato(API_URL, id);
@@ -147,7 +157,7 @@ export default function CatalogoPage() {
 
       <ErrorBanner message={error} />
 
-      <Card className="space-y-4">
+      {isAdmin && <Card className="space-y-4">
         <h2 className="font-serif text-lg font-semibold text-ink">Categorías</h2>
         <form className="flex flex-wrap items-center gap-3" onSubmit={handleCrearCategoria}>
           <input
@@ -178,9 +188,9 @@ export default function CatalogoPage() {
             </span>
           ))}
         </div>
-      </Card>
+      </Card>}
 
-      <Card className="space-y-4">
+      {isAdmin && <Card className="space-y-4">
         <h2 className="font-serif text-lg font-semibold text-ink">
           {editandoPlatoId ? "Editar plato" : "Agregar plato"}
         </h2>
@@ -231,7 +241,7 @@ export default function CatalogoPage() {
             </Button>
           )}
         </form>
-      </Card>
+      </Card>}
 
       <div className="space-y-8">
         {categoriasConPlatos.map(({ categoria, platos: platosCategoria }) => (
@@ -246,6 +256,8 @@ export default function CatalogoPage() {
                   key={plato.id}
                   plato={plato}
                   onToggleDisponible={() => handleToggleDisponible(plato)}
+                  canEdit={isAdmin}
+                  canDelete={isAdmin}
                   onEditar={() => handleEditarPlato(plato)}
                   onEliminar={() => handleEliminarPlato(plato.id)}
                 />
@@ -266,6 +278,8 @@ export default function CatalogoPage() {
                   key={plato.id}
                   plato={plato}
                   onToggleDisponible={() => handleToggleDisponible(plato)}
+                  canEdit={isAdmin}
+                  canDelete={isAdmin}
                   onEditar={() => handleEditarPlato(plato)}
                   onEliminar={() => handleEliminarPlato(plato.id)}
                 />
@@ -283,28 +297,32 @@ function PlatoCard({
   onToggleDisponible,
   onEditar,
   onEliminar,
+  canEdit,
+  canDelete,
 }: {
   plato: Plato;
   onToggleDisponible: () => void;
   onEditar: () => void;
   onEliminar: () => void;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   return (
     <div className="rounded-2xl border border-hairline bg-surface p-4 shadow-card">
       <div className="flex items-start justify-between gap-2">
         <span className="font-serif text-[15px] font-semibold text-ink">{plato.nombre}</span>
-        <button type="button" onClick={onEditar} className="text-muted hover:text-accent" aria-label={`Editar ${plato.nombre}`}>
+        {canEdit && <button type="button" onClick={onEditar} className="text-muted hover:text-accent" aria-label={`Editar ${plato.nombre}`}>
           ✎
-        </button>
+        </button>}
       </div>
       <p className="mt-1 font-serif text-lg font-semibold text-accent">{centavosToPesos(plato.precio)}</p>
       <div className="mt-3 flex items-center justify-between">
         <button type="button" onClick={onToggleDisponible}>
           <Badge tone={plato.disponible ? "success" : "warning"}>{plato.disponible ? "Disponible" : "Agotado"}</Badge>
         </button>
-        <button type="button" onClick={onEliminar} className="text-xs text-muted hover:text-danger">
+        {canDelete && <button type="button" onClick={onEliminar} className="text-xs text-muted hover:text-danger">
           Eliminar
-        </button>
+        </button>}
       </div>
     </div>
   );
