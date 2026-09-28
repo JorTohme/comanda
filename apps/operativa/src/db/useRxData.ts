@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getDb } from "./schema";
 
-export function useRxData<T>(collectionName: "mesas" | "platos" | "pedidos", orgId: string, sucursalId: string): T[] {
+export function useRxData<T>(collectionName: "mesas" | "platos" | "pedidos" | "outbox", orgId: string, sucursalId: string): T[] {
   const [data, setData] = useState<T[]>([]);
 
   useEffect(() => {

@@ -17,9 +17,9 @@ import {
 } from "@comanda/shared";
 import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
-import { getDb } from "./db/schema";
+import { getDb, type OutboxEntry } from "./db/schema";
 import { useRxData } from "./db/useRxData";
-import { crearPedidoOffline, getPendingCommandCount, restorePendingOrders, setupAutoSync } from "./db/sync";
+import { commandsWithoutProjection, crearPedidoOffline, discardCommand, flushOutbox, getPendingCommandCount, restorePendingOrders, retryCommand, setupAutoSync } from "./db/sync";
 import { exportLegacyDatabases, listLegacyDatabaseNames } from "./db/legacy-recovery";
 
 type ItemFormRow = { platoId: string; cantidad: string };
@@ -59,11 +59,18 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   const mesas = useRxData<Mesa>("mesas", session.user.orgId, session.user.sucursalId);
   const platos = useRxData<Plato>("platos", session.user.orgId, session.user.sucursalId);
   const pedidos = useRxData<Pedido>("pedidos", session.user.orgId, session.user.sucursalId);
+  const commands = useRxData<OutboxEntry>("outbox", session.user.orgId, session.user.sucursalId);
+  const commandsWithoutPedido = commandsWithoutProjection(commands, pedidos);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [form, setForm] = useState(FORM_VACIO);
   const [pendingCount, setPendingCount] = useState(0);
   const [legacyAvailable, setLegacyAvailable] = useState(false);
+
+  useEffect(() => {
+    const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
+    void getPendingCommandCount(tenant).then(setPendingCount).catch((err: unknown) => setError(mensajeDeError(err)));
+  }, [commands.length, session.user.orgId, session.user.sucursalId]);
 
   function cargarDatos() {
     return Promise.all([listMesas(API_URL), listPlatos(API_URL), listPedidos(API_URL)])
@@ -195,6 +202,37 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
     }
   }
 
+  async function handleRetryCommand(id: string) {
+    try {
+      const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
+      await retryCommand(id, tenant);
+      await flushOutbox(API_URL, tenant);
+      setPendingCount(await getPendingCommandCount(tenant));
+    } catch (err) {
+      setError(mensajeDeError(err));
+    }
+  }
+
+  async function handleDiscardCommand(id: string) {
+    if (!window.confirm("¿Descartar este pedido pendiente guardado en este dispositivo?")) return;
+    try {
+      const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
+      await discardCommand(id, tenant);
+      setPendingCount(await getPendingCommandCount(tenant));
+    } catch (err) {
+      setError(mensajeDeError(err));
+    }
+  }
+
+  function recoveryActions(command: OutboxEntry, label: string) {
+    return <section aria-live="polite" className="text-muted">
+      <p>{command.status === "failed" ? "Requiere atención" : "Pendiente de sincronización"}</p>
+      {command.status === "failed" && <p>{command.errorMessage ?? command.errorCode ?? "No se pudo sincronizar este pedido."}</p>}
+      {command.status === "failed" && command.errorCode !== "legacy_recovery_required" && <button type="button" className="btn btn-secondary btn-block" aria-label={`Reintentar pedido ${label}`} onClick={() => void handleRetryCommand(command.id)}>Reintentar</button>}
+      {command.errorCode !== "legacy_recovery_required" && <button type="button" className="btn btn-ghost btn-block" aria-label={`Descartar pedido pendiente ${label}`} onClick={() => void handleDiscardCommand(command.id)}>Descartar</button>}
+    </section>;
+  }
+
   const mesasLibres = mesas.filter((m) => m.estado === "libre");
 
   return (
@@ -321,21 +359,31 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
 
           <section className="seccion">
             <div className="titulo-seccion">Mis pedidos</div>
-            {pedidos.map((pedido) => (
-              <div key={pedido.id} className={`tarjeta-pedido estado-${pedido.estado}`}>
-                <div className="fila-superior">
-                  <span className="titulo">{LABEL_TIPO_SERVICIO[pedido.tipoServicio]}</span>
-                  <span className={`chip-estado estado-${pedido.estado}`}>{LABEL_ESTADO_PEDIDO[pedido.estado]}</span>
-                </div>
-                <div className="items">
-                  {pedido.items.map((item) => `${item.cantidad}× ${item.nombre}`).join(" · ")}
-                </div>
-                {pedido.estado === "abierto" && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-primary btn-block" onClick={() => handleAvanzar(pedido, "enviado_a_cocina")}>
+            {pedidos.map((pedido) => {
+              const command = commands.find((entry) => entry.id === pedido.clientRequestId && entry.orgId === session.user.orgId && entry.sucursalId === session.user.sucursalId);
+              return (
+                <div key={pedido.id} className={`tarjeta-pedido estado-${pedido.estado}`}>
+                  <div className="fila-superior">
+                    <span className="titulo">{LABEL_TIPO_SERVICIO[pedido.tipoServicio]}</span>
+                    <span className={`chip-estado estado-${pedido.estado}`}>{LABEL_ESTADO_PEDIDO[pedido.estado]}</span>
+                  </div>
+                  <div className="items">
+                    {pedido.items.map((item) => `${item.cantidad}× ${item.nombre}`).join(" · ")}
+                  </div>
+                  {command && recoveryActions(command, pedido.id)}
+                  {!command && pedido.estado === "abierto" && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-primary btn-block" onClick={() => handleAvanzar(pedido, "enviado_a_cocina")}>
                     Enviar a cocina
                   </button>}
-                {pedido.estado === "listo" && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-sage btn-block" onClick={() => handleAvanzar(pedido, "entregado")}>
+                  {!command && pedido.estado === "listo" && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-sage btn-block" onClick={() => handleAvanzar(pedido, "entregado")}>
                     Marcar entregado
                   </button>}
+                </div>
+              );
+            })}
+            {commandsWithoutPedido.map((command) => (
+              <div key={`command-${command.id}`} className="tarjeta-pedido">
+                <p>Pedido guardado en la cola local; no se pudo reconstruir su ficha.</p>
+                {recoveryActions(command, command.id)}
               </div>
             ))}
           </section>

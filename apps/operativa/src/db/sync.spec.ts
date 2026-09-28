@@ -13,7 +13,7 @@ jest.mock("@comanda/shared", () => ({
 
 import { ApiError, createPedido, getSessionGeneration, pedidoSchema, readSession, SessionChangedError, subscribeSession, type AuthSession } from "@comanda/shared";
 import { getDb } from "./schema";
-import { crearPedidoOffline, flushOutbox, getPendingCommandCount, restorePendingOrders, setupAutoSync } from "./sync";
+import { commandsWithoutProjection, crearPedidoOffline, discardCommand, flushOutbox, getPendingCommandCount, restorePendingOrders, retryCommand, setupAutoSync } from "./sync";
 
 const tenant = { orgId: "00000000-0000-0000-0000-000000000001", sucursalId: "00000000-0000-0000-0000-000000000002" };
 const otherTenant = { ...tenant, sucursalId: "00000000-0000-0000-0000-000000000009" };
@@ -100,6 +100,7 @@ describe("durable offline order creation and delivery", () => {
       outbox: {
         upsert: writeOutbox,
         find: () => ({ exec: async () => outboxRows.map((row) => outboxDocs.get(String(row.id)) ?? makeDocument(row, outboxRows)) }),
+        findOne: ({ selector }: { selector: { id: string } }) => ({ exec: async () => outboxRows.some((row) => row.id === selector.id) ? outboxDocs.get(selector.id) ?? null : null }),
       },
     } };
     jest.mocked(getDb).mockResolvedValue(db as never);
@@ -134,6 +135,89 @@ describe("durable offline order creation and delivery", () => {
     addCommand("failed", { status: "failed", errorCode: "http_422" });
     addCommand("other-tenant", { ...otherTenant });
     await expect(getPendingCommandCount(tenant)).resolves.toBe(2);
+  });
+
+  it("retries a failed command without changing its durable payload or idempotency key", async () => {
+    const originalInput = JSON.stringify({ ...input, clientRequestId: "request-1" });
+    const { row, doc } = addCommand("request-1", { status: "failed", attempts: 4, retryAt: 123, errorCode: "http_422", errorMessage: "Unavailable dish" });
+    row.input = originalInput;
+    await retryCommand("request-1", tenant);
+    expect(doc.incrementalPatch).toHaveBeenCalledWith({ status: "pending", retryAt: 0, errorCode: null, errorMessage: null });
+    expect(row.id).toBe("request-1");
+    expect(row.input).toBe(originalInput);
+    expect(row.attempts).toBe(4);
+  });
+
+  it("keeps durable commands visible when their optimistic projection was not written", () => {
+    const orphan = addCommand("orphan-command");
+    const projected = addCommand("projected-command");
+    const projection = { id: "projected-command", clientRequestId: "projected-command", ...tenant } as never;
+    expect(commandsWithoutProjection([orphan.row, projected.row] as never, [projection])).toEqual([orphan.row]);
+  });
+
+  it("discards only the matching optimistic projection and its command", async () => {
+    const { doc } = addCommand("request-1", { status: "failed" });
+    const optimistic = { id: "request-1", clientRequestId: "request-1", ...tenant };
+    const other = { id: "other-order", clientRequestId: "other-order", ...tenant };
+    orderRows.push(optimistic, other);
+    await discardCommand("request-1", tenant);
+    expect(doc.remove).toHaveBeenCalledTimes(1);
+    expect(orderRows).toEqual([other]);
+  });
+
+  it("never removes an authoritative server order when discarding a stale command", async () => {
+    const { doc } = addCommand("request-1", { status: "failed" });
+    const authoritative = { ...serverOrder("server-order", "request-1"), ...tenant };
+    orderRows.push(authoritative);
+    await discardCommand("request-1", tenant);
+    expect(doc.remove).toHaveBeenCalledTimes(1);
+    expect(orderRows).toEqual([authoritative]);
+  });
+
+  it("serializes discard behind an in-flight delivery and preserves the resulting server order", async () => {
+    const { doc } = addCommand("request-1");
+    const optimistic = { id: "request-1", clientRequestId: "request-1", ...tenant };
+    orderRows.push(optimistic);
+    let acknowledge!: (order: unknown) => void;
+    jest.mocked(createPedido).mockImplementationOnce(() => new Promise((resolve) => { acknowledge = resolve; }) as never);
+    const flushing = flushOutbox(apiUrl, tenant);
+    for (let attempt = 0; jest.mocked(createPedido).mock.calls.length === 0 && attempt < 10; attempt++) {
+      await new Promise((resolveTurn) => setImmediate(resolveTurn));
+    }
+    expect(createPedido).toHaveBeenCalledTimes(1);
+    const discarding = discardCommand("request-1", tenant);
+    await new Promise((resolveTurn) => setImmediate(resolveTurn));
+    const removalsBeforeAcknowledgement = doc.remove.mock.calls.length;
+    const authoritative = serverOrder();
+    acknowledge(authoritative as never);
+    await Promise.all([flushing, discarding]);
+    expect(removalsBeforeAcknowledgement).toBe(0);
+    expect(orderRows).toContainEqual(authoritative);
+    expect(orderRows).not.toContainEqual(expect.objectContaining({ id: "request-1" }));
+    expect(doc.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the tenant Web Lock when discarding a command", async () => {
+    addCommand("request-1", { status: "failed" });
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    const request = jest.fn(async (_name: string, _options: unknown, callback: () => Promise<void>) => callback());
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks: { request } } });
+    try {
+      await discardCommand("request-1", tenant);
+      expect(request).toHaveBeenCalledWith(`comanda.outbox:${tenant.orgId}:${tenant.sucursalId}`, expect.objectContaining({ mode: "exclusive" }), expect.any(Function));
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "navigator", previous);
+      else Reflect.deleteProperty(globalThis, "navigator");
+    }
+  });
+
+  it("does not retry or discard a command from another tenant", async () => {
+    const { row, doc } = addCommand("request-1", { ...otherTenant, status: "failed" });
+    await retryCommand("request-1", tenant);
+    await discardCommand("request-1", tenant);
+    expect(doc.incrementalPatch).not.toHaveBeenCalled();
+    expect(doc.remove).not.toHaveBeenCalled();
+    expect(row.status).toBe("failed");
   });
 
   it.each([408, 429, 500, 503])("retains HTTP %s and records bounded retry state", async (status) => {

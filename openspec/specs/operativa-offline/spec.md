@@ -152,3 +152,37 @@ Startup, `online`, `focus`, visible-tab transitions, socket reconnects, and a fi
 - THEN the outbox command MUST remain so a later idempotent attempt can recover the authoritative row
 
 **Verification status:** Jest tests cover HTTP classification, timeout/abort, identity retention, tenant/generation cancellation, lock/singleflight coordination, local-write failure, and trigger cleanup. Real multi-tab Web Locks, browser IndexedDB, and end-to-end socket reconnection remain pending Plan04.
+
+### Requirement: Mozo can recover pending and failed Pedido commands
+
+The Mozo view MUST derive local delivery status from the tenant-scoped outbox, including commands whose optimistic projection could not be written. It MUST render such a command without duplicating a Pedido row when a projection exists. Pending commands MUST be visibly identified; failed commands MUST show their recovery reason and offer accessible retry and discard actions. Retrying a failed command MUST preserve its immutable input and `clientRequestId`, changing only delivery status and retry/error metadata. Discard MUST require confirmation and serialize with delivery using the tenant-scoped outbox lock where available and an in-tab queue; it MUST recheck the command and authoritative Pedido before removing only that command and its matching optimistic local projection. It MUST NOT delete an authoritative Pedido, including one persisted with the same `clientRequestId`. Without Web Locks, only same-tab coordination is guaranteed. Legacy quarantine/export remains a separate recovery path and MUST NOT be silently discarded by these actions.
+
+The Cocina view MUST display and advance only acknowledged server Pedidos. An optimistic Pedido whose local ID is also its `clientRequestId`, or which has no authoritative server version, MUST NOT appear as a kitchen order or reach a state-update endpoint.
+
+#### Scenario: A failed command is retried without changing identity
+
+- GIVEN a failed command for the active organization and branch
+- WHEN the Mozo chooses to retry it
+- THEN it MUST return to pending delivery with the original request body and `clientRequestId`
+
+#### Scenario: A command remains recoverable when projection persistence fails
+
+- GIVEN a durable outbox command exists but its optimistic Pedido row is absent
+- WHEN the Mozo view renders the active branch
+- THEN the command MUST remain visible with available recovery actions
+- AND it MUST NOT be duplicated when a matching Pedido projection exists
+
+#### Scenario: A command is discarded after confirmation
+
+- GIVEN a pending or failed optimistic Pedido for the active tenant
+- WHEN the Mozo confirms discard
+- THEN only its outbox command and matching optimistic projection MUST be removed
+- AND any authoritative server Pedido MUST remain untouched
+
+#### Scenario: Cocina ignores a local optimistic Pedido
+
+- GIVEN an outbox-backed Pedido with a local optimistic ID
+- WHEN the Cocina view renders or advances kitchen orders
+- THEN that Pedido MUST NOT be displayed, counted as a kitchen order, or sent to a state endpoint
+
+**Verification status:** Jest tests cover tenant-scoped retry/discard behavior, immutable identity, and protection of authoritative Pedido rows. DOM and interaction assertions remain pending Plan04 browser verification.

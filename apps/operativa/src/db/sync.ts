@@ -165,6 +165,71 @@ export async function getPendingCommandCount(tenant: TenantContext): Promise<num
   return count;
 }
 
+export function commandsWithoutProjection(commands: OutboxEntry[], pedidos: Pick<Pedido, "clientRequestId">[]): OutboxEntry[] {
+  const projectedIds = new Set(pedidos.flatMap((pedido) => typeof pedido.clientRequestId === "string" ? [pedido.clientRequestId] : []));
+  return commands.filter((command) => !projectedIds.has(command.id));
+}
+
+const outboxOperationQueues = new Map<string, Promise<void>>();
+
+async function withOutboxLock(tenant: TenantContext, operation: () => Promise<void>, signal?: AbortSignal): Promise<void> {
+  const key = `${tenant.orgId}:${tenant.sucursalId}`;
+  const previous = outboxOperationQueues.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  outboxOperationQueues.set(key, turn);
+  await previous;
+  try {
+    const navigator = globalThis.navigator as Navigator & { locks?: LockManager };
+    const lockName = `comanda.outbox:${tenant.orgId}:${tenant.sucursalId}`;
+    if (!navigator?.locks) return await operation();
+    return await navigator.locks.request<void>(lockName, signal ? { mode: "exclusive", signal } : { mode: "exclusive" }, async () => { await operation(); });
+  } finally {
+    release();
+    if (outboxOperationQueues.get(key) === turn) outboxOperationQueues.delete(key);
+  }
+}
+
+export function retryCommand(id: string, tenant: TenantContext): Promise<void> {
+  return withOutboxLock(tenant, async () => {
+    const db = await getDb(tenant.orgId, tenant.sucursalId);
+    const entry = await db.collections.outbox.findOne({ selector: { id } }).exec();
+    if (!entry) return;
+    const command = documentData<OutboxEntry>(entry);
+    if (command.id !== id || command.orgId !== tenant.orgId || command.sucursalId !== tenant.sucursalId || command.status !== "failed" || command.errorCode === "legacy_recovery_required") return;
+    await entry.incrementalPatch({ status: "pending", retryAt: 0, errorCode: null, errorMessage: null });
+  });
+}
+
+export function discardCommand(id: string, tenant: TenantContext): Promise<void> {
+  return withOutboxLock(tenant, async () => {
+    const db = await getDb(tenant.orgId, tenant.sucursalId);
+    const entry = await db.collections.outbox.findOne({ selector: { id } }).exec();
+    if (!entry) return;
+    const command = documentData<OutboxEntry>(entry);
+    if (command.id !== id || command.orgId !== tenant.orgId || command.sucursalId !== tenant.sucursalId || command.errorCode === "legacy_recovery_required") return;
+
+    const authoritative = await db.collections.pedidos.findOne({ selector: { clientRequestId: id } }).exec();
+    if (authoritative) {
+      const saved = documentData<Record<string, unknown>>(authoritative);
+      if (saved.orgId !== tenant.orgId || saved.sucursalId !== tenant.sucursalId) return;
+      if (saved.id !== id) {
+        await entry.remove();
+        return;
+      }
+    }
+
+    const optimistic = await db.collections.pedidos.findOne({ selector: { id } }).exec();
+    if (optimistic) {
+      const order = documentData<Record<string, unknown>>(optimistic);
+      if (order.id === id && order.clientRequestId === id && order.orgId === tenant.orgId && order.sucursalId === tenant.sucursalId) {
+        await optimistic.remove();
+      }
+    }
+    await entry.remove();
+  });
+}
+
 type FlushOptions = { signal?: AbortSignal };
 type ReconnectSource = { on(event: "connect", listener: () => void): unknown; off(event: "connect", listener: () => void): unknown };
 const inFlightFlushes = new Map<string, Promise<void>>();
@@ -304,11 +369,7 @@ export async function flushOutbox(apiUrl: string, tenant: TenantContext, options
   const key = `${new URL(apiUrl).origin}:${tenant.orgId}:${tenant.sucursalId}`;
   const existing = inFlightFlushes.get(key);
   if (existing) return existing;
-  const navigator = globalThis.navigator as Navigator & { locks?: LockManager };
-  const execute = () => drainOutbox(apiUrl, tenant, options);
-  const pending = (navigator?.locks
-    ? navigator.locks.request<void>(`comanda.outbox:${tenant.orgId}:${tenant.sucursalId}`, { mode: "exclusive", signal: options.signal }, async () => { await execute(); })
-    : execute()).finally(() => {
+  const pending = withOutboxLock(tenant, () => drainOutbox(apiUrl, tenant, options), options.signal).finally(() => {
       if (inFlightFlushes.get(key) === pending) inFlightFlushes.delete(key);
     });
   inFlightFlushes.set(key, pending);

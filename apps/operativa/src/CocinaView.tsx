@@ -13,7 +13,8 @@ const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
 };
 
 export function CocinaView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
-  const pedidos = useRxData<Pedido>("pedidos", session.user.orgId, session.user.sucursalId);
+  const pedidosLocal = useRxData<Pedido>("pedidos", session.user.orgId, session.user.sucursalId);
+  const pedidos = pedidosLocal.filter((pedido) => pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version));
   const platos = useRxData<Plato>("platos", session.user.orgId, session.user.sucursalId);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
