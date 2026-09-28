@@ -78,6 +78,15 @@ Módulos = los bounded contexts ya definidos en doc §4.2: `auth`, `tenancy`, `c
 
 ## 4. Orden de iteraciones
 
+### Semántica monetaria y cierre de caja
+
+- `Cobro` es la evidencia de una venta cobrada; un `Pedido` entregado o sus ítems no prueban un pago.
+- El efectivo esperado es `montoInicial + Cobros efectivo + ingresos - egresos`. Los Cobros digitales se muestran aparte; `totalVentas` suma Cobros en cualquier medio y nunca movimientos ni apertura.
+- Cierre, cobros y movimientos se serializan con lock de la fila `Sucursal`, siempre antes de tocar los registros hijos. El cierre persiste un snapshot inmutable; reintentar con el mismo monto declarado devuelve ese snapshot y cambiarlo produce conflicto.
+- Un turno cerrado previo a esta semántica queda marcado `legacy_mixta`; se conserva su total histórico sin reinterpretarlo. La UI lo rotula **Total histórico mixto**. Ningún medio ni fecha de cobro desconocidos se deducen de timestamps del Pedido.
+- `cobrosDigitalesSinTurno` cuenta Cobros Mercado Pago de la sucursal sin turno; `pedidosLegacySinCobro` cuenta, para un turno, Pedidos vinculados por `turnoCajaId` que aún no tienen Cobro.
+- Un turno abierto heredado `legacy_mixta` bloquea escrituras monetarias hasta su conciliación explícita bajo el procedimiento de rollout.
+
 Mapeado 1:1 al roadmap de doc §8, partido en slices chicos y mergeables — cada iteración cierra a `main` antes de arrancar la siguiente.
 
 ### MVP

@@ -7,6 +7,7 @@ import {
   turnoCajaDetalleSchema,
   avanzarEstadoPedido,
   centavosToPesos,
+  cobrarPedidoEfectivo,
   clearSession,
   createCategoria,
   listCategorias,
@@ -20,6 +21,7 @@ import {
   canActOnPedido,
   connectRealtime,
   disconnectRealtime,
+  siguienteEstadoPedido,
   updateDisponibilidadPlato,
   updateEstadoMesa,
 } from "./index";
@@ -441,11 +443,16 @@ describe("versioned Pedido contract", () => {
       cerradoEn: null,
       montoDeclarado: null,
       totalCalculado: 0,
+      semantica: "efectivo",
+      totalDigital: null,
+      totalVentas: null,
       diferencia: null,
       createdAt: "2026-09-27T00:00:00.000Z",
       updatedAt: "2026-09-27T00:00:00.000Z",
       movimientos: [],
       pedidos: [pedidoSummary],
+      cobrosDigitalesSinTurno: 0,
+      pedidosLegacySinCobro: 0,
     });
 
     expect(detail.pedidos).toHaveLength(1);
@@ -476,6 +483,28 @@ describe("versioned Pedido contract", () => {
         estado: "enviado_a_cocina",
         expectedVersion: 3,
       });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("does not expose generic cobrado transition after delivery", () => {
+    expect(siguienteEstadoPedido({ estado: "entregado", tipoServicio: "barra", direccionEnvio: null })).toBeNull();
+  });
+
+  it("posts explicit cash collection and parses the authoritative Pedido", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, {
+      id: "00000000-0000-0000-0000-000000000001", orgId: "00000000-0000-0000-0000-000000000002",
+      sucursalId: "00000000-0000-0000-0000-000000000003", tipoServicio: "barra", mesaId: null,
+      plataforma: null, direccionEnvio: null, estado: "cobrado", version: 1, cobro: null, items: [],
+      createdAt: "2026-09-27T00:00:00.000Z", updatedAt: "2026-09-27T00:00:01.000Z",
+    }));
+    const originalFetch = global.fetch;
+    global.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      await cobrarPedidoEfectivo("http://api.test", "00000000-0000-0000-0000-000000000001");
+      expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/pedidos/00000000-0000-0000-0000-000000000001/cobro-efectivo");
+      expect(fetchMock.mock.calls[0][1].method).toBe("POST");
     } finally {
       global.fetch = originalFetch;
     }

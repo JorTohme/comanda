@@ -5,6 +5,7 @@ import {
   abrirTurno,
   centavosToPesos,
   cerrarTurno,
+  cobrarPedidoEfectivo,
   crearPreferenciaPago,
   listPedidos,
   obtenerTurnoActual,
@@ -74,6 +75,21 @@ export default function CajaPage() {
       checkoutWindow.location.assign(initPoint);
     } catch (err) {
       checkoutWindow.close();
+      setError(mensajeDeError(err));
+    } finally {
+      setCobrandoPedidoId(null);
+    }
+  }
+
+  async function handleCobrarEfectivo(pedidoId: string) {
+    if (!turno || turno.semantica !== "efectivo") return;
+    setError(null);
+    setCobrandoPedidoId(pedidoId);
+    try {
+      const cobrado = await cobrarPedidoEfectivo(API_URL, pedidoId);
+      setPedidosPendientesCobro((current) => current.filter((pedido) => pedido.id !== cobrado.id));
+      setTurno(await obtenerTurnoActual(API_URL));
+    } catch (err) {
       setError(mensajeDeError(err));
     } finally {
       setCobrandoPedidoId(null);
@@ -155,6 +171,14 @@ export default function CajaPage() {
                 <span className="text-sm font-medium text-ink">{centavosToPesos(totalPedido(pedido))}</span>
                 <Button
                   size="sm"
+                  variant="secondary"
+                  onClick={() => handleCobrarEfectivo(pedido.id)}
+                  disabled={!turno || turno.semantica !== "efectivo" || cobrandoPedidoId === pedido.id}
+                >
+                  Cobrar en efectivo
+                </Button>
+                <Button
+                  size="sm"
                   onClick={() => handleCobrarConMercadoPago(pedido.id)}
                   disabled={cobrandoPedidoId === pedido.id}
                 >
@@ -170,9 +194,16 @@ export default function CajaPage() {
         <Card className="space-y-3">
           <h2 className="font-serif text-lg font-semibold text-ink">Turno cerrado</h2>
           <p className="text-sm text-muted">Monto inicial: {centavosToPesos(resultadoCierre.montoInicial)}</p>
+          {resultadoCierre.semantica === "legacy_mixta" && <p className="font-medium text-warning">Total histórico mixto</p>}
           <p className="text-sm text-muted">
-            Total calculado: {centavosToPesos(resultadoCierre.totalCalculado ?? 0)}
+            {resultadoCierre.semantica === "legacy_mixta"
+              ? `Total histórico mixto${resultadoCierre.totalCalculado == null ? "" : `: ${centavosToPesos(resultadoCierre.totalCalculado)}`}`
+              : `Efectivo esperado: ${centavosToPesos(resultadoCierre.totalCalculado ?? 0)}`}
           </p>
+          {resultadoCierre.semantica !== "legacy_mixta" && <>
+            <p className="text-sm text-muted">Ventas: {centavosToPesos(resultadoCierre.totalVentas ?? 0)}</p>
+            <p className="text-sm text-muted">Cobros digitales: {centavosToPesos(resultadoCierre.totalDigital ?? 0)}</p>
+          </>}
           <p className="text-sm text-muted">
             Monto declarado: {centavosToPesos(resultadoCierre.montoDeclarado ?? 0)}
           </p>
@@ -211,9 +242,18 @@ export default function CajaPage() {
             <h2 className="font-serif text-lg font-semibold text-ink">Turno abierto</h2>
             <p className="text-sm text-muted">Monto inicial: {centavosToPesos(turno.montoInicial)}</p>
             <p className="text-sm text-muted">Abierto en: {new Date(turno.abiertoEn).toLocaleString()}</p>
+            {turno.semantica === "legacy_mixta" && <p className="font-medium text-warning">Total histórico mixto</p>}
             <p className="font-serif text-lg font-semibold text-accent">
-              Total: {centavosToPesos(turno.totalCalculado)}
+              {turno.semantica === "legacy_mixta"
+                ? `Total histórico mixto${turno.totalCalculado == null ? "" : `: ${centavosToPesos(turno.totalCalculado)}`}`
+                : `Efectivo esperado: ${centavosToPesos(turno.totalCalculado ?? 0)}`}
             </p>
+            {turno.semantica !== "legacy_mixta" && <>
+              <p className="text-sm text-muted">Ventas: {centavosToPesos(turno.totalVentas ?? 0)}</p>
+              <p className="text-sm text-muted">Cobros digitales: {centavosToPesos(turno.totalDigital ?? 0)}</p>
+            </>}
+            <p className="text-sm text-muted">Cobros digitales sin turno: {turno.cobrosDigitalesSinTurno}</p>
+            {turno.semantica === "legacy_mixta" && <p className="text-sm text-muted">Pedidos heredados sin cobro: {turno.pedidosLegacySinCobro}</p>}
           </Card>
 
           <Card className="space-y-4">

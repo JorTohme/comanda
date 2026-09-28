@@ -62,10 +62,10 @@ export const tipoMovimientoCajaSchema = z.enum(["ingreso", "egreso"]);
 export type TipoMovimientoCaja = z.infer<typeof tipoMovimientoCajaSchema>;
 export const movimientoCajaSchema = z.object({ id: z.string().uuid(), turnoCajaId: z.string().uuid(), tipo: tipoMovimientoCajaSchema, monto: z.number().int(), descripcion: z.string(), createdAt: timestampSchema });
 export type MovimientoCaja = z.infer<typeof movimientoCajaSchema>;
-export const turnoCajaSchema = tenantSchema.extend({ id: z.string().uuid(), estado: estadoTurnoCajaSchema, montoInicial: z.number().int(), abiertoPorId: z.string().uuid(), abiertoEn: timestampSchema, cerradoPorId: z.string().uuid().nullable(), cerradoEn: timestampSchema.nullable(), montoDeclarado: z.number().int().nullable(), totalCalculado: z.number().int().nullable(), diferencia: z.number().int().nullable(), createdAt: timestampSchema, updatedAt: timestampSchema });
+export const turnoCajaSchema = tenantSchema.extend({ id: z.string().uuid(), estado: estadoTurnoCajaSchema, semantica: z.enum(["efectivo", "legacy_mixta"]), montoInicial: z.number().int(), abiertoPorId: z.string().uuid(), abiertoEn: timestampSchema, cerradoPorId: z.string().uuid().nullable(), cerradoEn: timestampSchema.nullable(), montoDeclarado: z.number().int().nullable(), totalCalculado: z.number().int().nullable(), totalDigital: z.number().int().nullable(), totalVentas: z.number().int().nullable(), diferencia: z.number().int().nullable(), createdAt: timestampSchema, updatedAt: timestampSchema });
 export type TurnoCaja = z.infer<typeof turnoCajaSchema>;
 const pedidoCajaResumenSchema = pedidoSchema.omit({ version: true, cobro: true });
-export const turnoCajaDetalleSchema = turnoCajaSchema.extend({ movimientos: z.array(movimientoCajaSchema), pedidos: z.array(pedidoCajaResumenSchema), totalCalculado: z.number().int() });
+export const turnoCajaDetalleSchema = turnoCajaSchema.extend({ movimientos: z.array(movimientoCajaSchema), pedidos: z.array(pedidoCajaResumenSchema), totalCalculado: z.number().int().nullable(), cobrosDigitalesSinTurno: z.number().int().nonnegative(), pedidosLegacySinCobro: z.number().int().nonnegative() });
 export type TurnoCajaDetalle = z.infer<typeof turnoCajaDetalleSchema>;
 export const estadoPagoSchema = z.enum(["pendiente", "aprobado", "rechazado"]);
 export type EstadoPago = z.infer<typeof estadoPagoSchema>;
@@ -127,10 +127,11 @@ export interface ApiOptions { accessToken?: string; signal?: AbortSignal; }
 // branching (listo -> en_camino) — the backend is the source of truth for valid transitions.
 // See siguienteEstadoPedido() for the pedido-aware version used by the caja UI.
 export const SIGUIENTE_ESTADO_PEDIDO: Record<EstadoPedido, EstadoPedido | null> = {
-  abierto: "enviado_a_cocina", enviado_a_cocina: "en_preparacion", en_preparacion: "listo", listo: "entregado", en_camino: "entregado", entregado: "cobrado", cobrado: "cerrado", cerrado: null,
+    abierto: "enviado_a_cocina", enviado_a_cocina: "en_preparacion", en_preparacion: "listo", listo: "entregado", en_camino: "entregado", entregado: null, cobrado: "cerrado", cerrado: null,
 };
 
 export function siguienteEstadoPedido(pedido: Pick<Pedido, "estado" | "tipoServicio" | "direccionEnvio">): EstadoPedido | null {
+  if (pedido.estado === "entregado") return null;
   const esAutoDelivery = pedido.tipoServicio === "delivery" && pedido.direccionEnvio != null;
   if (pedido.estado === "listo" && esAutoDelivery) return "en_camino";
   return SIGUIENTE_ESTADO_PEDIDO[pedido.estado];
@@ -235,6 +236,7 @@ export async function deleteMesa(baseUrl: string, id: string, options?: ApiOptio
 export async function listPedidos(baseUrl: string, options?: ApiOptions): Promise<Pedido[]> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(pedidoSchema), "GET", url); }
 export async function createPedido(baseUrl: string, input: CreatePedidoInput, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), pedidoSchema, "POST", url); }
 export async function avanzarEstadoPedido(baseUrl: string, id: string, estado: EstadoPedido, expectedVersion: number, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos/${id}/estado`; return parseJsonOrThrow(await apiFetch(url, { method: "PATCH", body: JSON.stringify({ estado, expectedVersion }) }, options), pedidoSchema, "PATCH", url); }
+export async function cobrarPedidoEfectivo(baseUrl: string, id: string, options?: ApiOptions): Promise<Pedido> { const url = `${baseUrl}/pedidos/${id}/cobro-efectivo`; return parseJsonOrThrow(await apiFetch(url, { method: "POST" }, options), pedidoSchema, "POST", url); }
 export async function abrirTurno(baseUrl: string, input: AbrirTurnoInput, options?: ApiOptions): Promise<TurnoCaja> { const url = `${baseUrl}/caja/turnos`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), turnoCajaSchema, "POST", url); }
 export async function obtenerTurnoActual(baseUrl: string, options?: ApiOptions): Promise<TurnoCajaDetalle | null> { const url = `${baseUrl}/caja/turnos/actual`; return parseJsonOrThrow(await apiFetch(url, {}, options), turnoCajaDetalleSchema.nullable(), "GET", url); }
 export async function listTurnos(baseUrl: string, options?: ApiOptions): Promise<TurnoCaja[]> { const url = `${baseUrl}/caja/turnos`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(turnoCajaSchema), "GET", url); }

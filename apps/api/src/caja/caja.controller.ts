@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Inject, Param, Patch, Post } from "@nestjs/common";
 import { RolUsuario } from "@prisma/client";
 import { CurrentUser } from "../auth/current-user.decorator";
-import { CurrentUserId } from "../auth/current-user-id.decorator";
+import { CurrentActor } from "../auth/current-actor.decorator";
+import { JwtClaims } from "../auth/jwt.service";
 import { TenantContext } from "../auth/jwt.service";
 import { Roles } from "../auth/roles.decorator";
 import { CajaService } from "./caja.service";
@@ -15,8 +16,8 @@ export class CajaController {
   constructor(@Inject(CajaService) private readonly cajaService: CajaService) {}
 
   @Post()
-  abrirTurno(@Body() dto: AbrirTurnoDto, @CurrentUserId() usuarioId: string, @CurrentUser() user: TenantContext) {
-    return this.cajaService.abrirTurno(dto, usuarioId, user);
+  abrirTurno(@Body() dto: AbrirTurnoDto, @CurrentUser() user: TenantContext, @CurrentActor() actor: JwtClaims) {
+    return this.cajaService.abrirTurno(dto, user, actor);
   }
 
   @Get("actual")
@@ -39,17 +40,18 @@ export class CajaController {
     @Param("id") id: string,
     @Body() dto: CreateMovimientoDto,
     @CurrentUser() user: TenantContext,
+    @CurrentActor() actor: JwtClaims,
   ) {
-    return this.cajaService.registrarMovimiento(id, dto, user);
+    return this.cajaService.registrarMovimiento(id, dto, user, actor);
   }
 
   @Patch(":id/cerrar")
   cerrarTurno(
     @Param("id") id: string,
     @Body() dto: CerrarTurnoDto,
-    @CurrentUserId() usuarioId: string,
     @CurrentUser() user: TenantContext,
+    @CurrentActor() actor: JwtClaims,
   ) {
-    return this.cajaService.cerrarTurno(id, dto, usuarioId, user);
+    return this.cajaService.cerrarTurno(id, dto, user, actor);
   }
 }

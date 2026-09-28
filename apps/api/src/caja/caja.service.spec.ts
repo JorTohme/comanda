@@ -3,11 +3,13 @@ import { BadRequestException, ConflictException, NotFoundException } from "@nest
 import { CajaService } from "./caja.service";
 import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
+import type { JwtClaims } from "../auth/jwt.service";
 
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
   sucursalId: "00000000-0000-0000-0000-000000000012",
 };
+const ACTOR: JwtClaims = { ...TENANT, sub: "00000000-0000-0000-0000-000000000013", rol: "admin", iat: 1, exp: 2 };
 
 describe("CajaService", () => {
   let service: CajaService;
@@ -22,10 +24,18 @@ describe("CajaService", () => {
     movimientoCaja: {
       create: jest.fn(),
     },
+    cobro: { count: jest.fn().mockResolvedValue(0) },
+    pedido: { count: jest.fn().mockResolvedValue(0) },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: TENANT.sucursalId }]),
+    $transaction: jest.fn(),
   };
 
   beforeEach(async () => {
     jest.resetAllMocks();
+    prisma.cobro.count.mockResolvedValue(0);
+    prisma.pedido.count.mockResolvedValue(0);
+    prisma.$queryRaw.mockResolvedValue([{ id: TENANT.sucursalId }]);
+    prisma.$transaction.mockImplementation((callback) => callback(prisma));
     const moduleRef = await Test.createTestingModule({
       providers: [CajaService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -39,11 +49,11 @@ describe("CajaService", () => {
       const created = { id: "turno-1", montoInicial: 10000, abiertoPorId: "usuario-1", estado: "abierto", ...TENANT };
       prisma.turnoCaja.create.mockResolvedValue(created);
 
-      const result = await service.abrirTurno({ montoInicial: 10000 }, "usuario-1", TENANT);
+      const result = await service.abrirTurno({ montoInicial: 10000 }, TENANT, ACTOR);
 
       expect(prisma.turnoCaja.findFirst).toHaveBeenCalledWith({ where: { ...TENANT, estado: "abierto" } });
       expect(prisma.turnoCaja.create).toHaveBeenCalledWith({
-        data: { montoInicial: 10000, abiertoPorId: "usuario-1", ...TENANT },
+        data: { montoInicial: 10000, abiertoPorId: ACTOR.sub, semantica: "efectivo", ...TENANT },
       });
       expect(result).toEqual(created);
     });
@@ -51,7 +61,7 @@ describe("CajaService", () => {
     it("throws ConflictException when an open turno already exists for the tenant", async () => {
       prisma.turnoCaja.findFirst.mockResolvedValue({ id: "turno-existing", estado: "abierto" });
 
-      await expect(service.abrirTurno({ montoInicial: 5000 }, "usuario-1", TENANT)).rejects.toBeInstanceOf(
+      await expect(service.abrirTurno({ montoInicial: 5000 }, TENANT, ACTOR)).rejects.toBeInstanceOf(
         ConflictException,
       );
       expect(prisma.turnoCaja.create).not.toHaveBeenCalled();
@@ -68,6 +78,7 @@ describe("CajaService", () => {
         "turno-1",
         { tipo: "ingreso", monto: 500, descripcion: "propina" },
         TENANT,
+        ACTOR,
       );
 
       expect(prisma.turnoCaja.findFirst).toHaveBeenCalledWith({ where: { id: "turno-1", ...TENANT } });
@@ -81,7 +92,7 @@ describe("CajaService", () => {
       prisma.turnoCaja.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.registrarMovimiento("missing-turno", { tipo: "ingreso", monto: 100, descripcion: "x" }, TENANT),
+        service.registrarMovimiento("missing-turno", { tipo: "ingreso", monto: 100, descripcion: "x" }, TENANT, ACTOR),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.movimientoCaja.create).not.toHaveBeenCalled();
     });
@@ -90,7 +101,7 @@ describe("CajaService", () => {
       prisma.turnoCaja.findFirst.mockResolvedValue({ id: "turno-1", estado: "cerrado", ...TENANT });
 
       await expect(
-        service.registrarMovimiento("turno-1", { tipo: "egreso", monto: 100, descripcion: "x" }, TENANT),
+        service.registrarMovimiento("turno-1", { tipo: "egreso", monto: 100, descripcion: "x" }, TENANT, ACTOR),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.movimientoCaja.create).not.toHaveBeenCalled();
     });
@@ -100,60 +111,52 @@ describe("CajaService", () => {
     const turnoConDatos = {
       id: "turno-1",
       montoInicial: 10000,
+      semantica: "efectivo",
       movimientos: [
         { tipo: "ingreso", monto: 200 },
         { tipo: "egreso", monto: 150 },
       ],
-      pedidos: [
-        {
-          items: [
-            { precioUnitario: 1000, cantidad: 2 },
-            { precioUnitario: 500, cantidad: 1 },
-          ],
-        },
-        { items: [{ precioUnitario: 300, cantidad: 3 }] },
-      ],
+      cobros: [{ metodo: "efectivo", monto: 3400 }, { metodo: "mercadopago", monto: 300 }],
     };
-    // montoInicial 10000 + ventas (2000+500+900=3400) + movimientos (200-150=50) = 13450
+    // Drawer: 10000 + cash receipts 3400 + net movements 50 = 13450.
 
     beforeEach(() => {
-      prisma.turnoCaja.findFirst.mockResolvedValue({ id: "turno-1", estado: "abierto", ...TENANT });
-      prisma.turnoCaja.findFirstOrThrow.mockResolvedValue(turnoConDatos);
+      prisma.turnoCaja.findFirst.mockResolvedValue({ ...turnoConDatos, estado: "abierto", ...TENANT });
       prisma.turnoCaja.update.mockImplementation(({ data }) => Promise.resolve({ id: "turno-1", ...data }));
     });
 
     it("computes totalCalculado from pedidos items and movimientos", async () => {
-      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13450 }, "usuario-1", TENANT);
+      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13450 }, TENANT, ACTOR);
 
       expect(result.totalCalculado).toBe(13450);
     });
 
     it("computes a positive diferencia when montoDeclarado exceeds totalCalculado", async () => {
-      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13500 }, "usuario-1", TENANT);
+      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13500 }, TENANT, ACTOR);
 
       expect(result.diferencia).toBe(50);
     });
 
     it("computes a negative diferencia when montoDeclarado is under totalCalculado", async () => {
-      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13400 }, "usuario-1", TENANT);
+      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13400 }, TENANT, ACTOR);
 
       expect(result.diferencia).toBe(-50);
     });
 
     it("computes a zero diferencia when montoDeclarado matches totalCalculado exactly", async () => {
-      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13450 }, "usuario-1", TENANT);
+      const result = await service.cerrarTurno("turno-1", { montoDeclarado: 13450 }, TENANT, ACTOR);
 
       expect(result.diferencia).toBe(0);
     });
 
     it("persists estado=cerrado, cerradoPorId and cerradoEn", async () => {
-      await service.cerrarTurno("turno-1", { montoDeclarado: 13450 }, "usuario-1", TENANT);
+      await service.cerrarTurno("turno-1", { montoDeclarado: 13450 }, TENANT, ACTOR);
 
       expect(prisma.turnoCaja.update).toHaveBeenCalledWith({
-        where: { id: "turno-1" },
+        where: { id: "turno-1", ...TENANT },
         data: expect.objectContaining({
           estado: "cerrado",
-          cerradoPorId: "usuario-1",
+          cerradoPorId: ACTOR.sub,
           cerradoEn: expect.any(Date),
           montoDeclarado: 13450,
           totalCalculado: 13450,
@@ -162,12 +165,11 @@ describe("CajaService", () => {
       });
     });
 
-    it("throws ConflictException when the turno is already cerrado", async () => {
-      prisma.turnoCaja.findFirst.mockResolvedValue({ id: "turno-1", estado: "cerrado", ...TENANT });
+    it("returns an identical frozen close and conflicts on a changed declaration", async () => {
+      prisma.turnoCaja.findFirst.mockResolvedValue({ ...turnoConDatos, estado: "cerrado", montoDeclarado: 100, totalCalculado: 150, diferencia: -50, ...TENANT });
 
-      await expect(
-        service.cerrarTurno("turno-1", { montoDeclarado: 100 }, "usuario-1", TENANT),
-      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.cerrarTurno("turno-1", { montoDeclarado: 100 }, TENANT, ACTOR)).resolves.toMatchObject({ totalCalculado: 150 });
+      await expect(service.cerrarTurno("turno-1", { montoDeclarado: 101 }, TENANT, ACTOR)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.turnoCaja.update).not.toHaveBeenCalled();
     });
 
@@ -175,7 +177,7 @@ describe("CajaService", () => {
       prisma.turnoCaja.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.cerrarTurno("missing-turno", { montoDeclarado: 100 }, "usuario-1", TENANT),
+        service.cerrarTurno("missing-turno", { montoDeclarado: 100 }, TENANT, ACTOR),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.turnoCaja.update).not.toHaveBeenCalled();
     });
@@ -193,18 +195,27 @@ describe("CajaService", () => {
     it("returns the open turno with a computed totalCalculado when one exists", async () => {
       prisma.turnoCaja.findFirst.mockResolvedValue({
         id: "turno-1",
+        estado: "abierto",
         montoInicial: 1000,
+        semantica: "efectivo",
         movimientos: [{ tipo: "ingreso", monto: 200 }],
-        pedidos: [{ items: [{ precioUnitario: 100, cantidad: 2 }] }],
+        pedidos: [],
+        cobros: [{ metodo: "efectivo", monto: 200 }],
+        totalCalculado: null,
+        totalDigital: null,
+        totalVentas: null,
       });
+      prisma.cobro.count.mockResolvedValue(0);
+      prisma.pedido.count.mockResolvedValue(0);
 
       const result = await service.obtenerActual(TENANT);
 
       expect(prisma.turnoCaja.findFirst).toHaveBeenCalledWith({
         where: { ...TENANT, estado: "abierto" },
-        include: { movimientos: true, pedidos: { include: { items: true } } },
+        include: { movimientos: true, cobros: true, pedidos: { include: { items: true } } },
       });
       expect(result?.totalCalculado).toBe(1400);
+      expect(result?.totalVentas).toBe(200);
     });
   });
 
@@ -232,6 +243,21 @@ describe("CajaService", () => {
 
       expect(prisma.turnoCaja.findMany).toHaveBeenCalledWith({ where: TENANT, orderBy: { abiertoEn: "desc" } });
       expect(result).toEqual(all);
+    });
+  });
+
+  describe("calcularTotales", () => {
+    it("separates expected physical cash, digital receipts, and sales", () => {
+      expect(service.calcularTotales({
+        montoInicial: 1000,
+        movimientos: [{ tipo: "ingreso", monto: 100 }, { tipo: "egreso", monto: 50 }],
+        cobros: [{ metodo: "efectivo", monto: 700 }, { metodo: "mercadopago", monto: 800 }],
+      })).toEqual({ totalCalculado: 1750, totalDigital: 800, totalVentas: 1500 });
+    });
+
+    it("rejects sums outside signed database integer bounds", () => {
+      expect(() => service.calcularTotales({ montoInicial: 2_147_483_647, movimientos: [], cobros: [{ metodo: "efectivo", monto: 1 }] })).toThrow(BadRequestException);
+      expect(() => service.calcularTotales({ montoInicial: 0, movimientos: [{ tipo: "egreso", monto: 2_147_483_647 }, { tipo: "egreso", monto: 2_147_483_647 }], cobros: [] })).toThrow(BadRequestException);
     });
   });
 });
