@@ -28,6 +28,9 @@ import {
   updateDisponibilidadPlato,
   updateEstadoMesa,
   realtimeEventSchemas,
+  sucursalSchema,
+  reportesSchema,
+  reportesConsolidadoSchema,
 } from "./index";
 
 describe("centavosToPesos", () => {
@@ -318,6 +321,26 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     await expect(listCategorias("http://api.test")).rejects.toMatchObject({ status: 429, retryAfterMs: 3_600_000 });
   });
 
+});
+
+describe("timezone-aware report contracts", () => {
+  it("requires report timezone and unresolved history counts", () => {
+    const report = {
+      ventasPorDia: [], platosMasPedidos: [], horasPico: [], timezone: "America/Argentina/Buenos_Aires",
+      cobrosSinFecha: 2, pedidosLegadoSinCobro: 3,
+    };
+    expect(reportesSchema.parse(report)).toEqual(report);
+    expect(reportesSchema.safeParse({ ventasPorDia: [], platosMasPedidos: [], horasPico: [] }).success).toBe(false);
+  });
+
+  it("includes timezone in branch and consolidated report contracts", () => {
+    const base = { id: NEW_SESSION.user.sucursalId, nombre: "Centro", organizacionId: NEW_SESSION.user.orgId,
+      createdAt: "2026-09-27T00:00:00.000Z", updatedAt: "2026-09-27T00:00:00.000Z", timezone: "America/Los_Angeles" };
+    expect(sucursalSchema.parse(base).timezone).toBe("America/Los_Angeles");
+    expect(reportesConsolidadoSchema.parse([{ ...base, sucursalId: base.id, sucursalNombre: base.nombre,
+      ventasPorDia: [], platosMasPedidos: [], horasPico: [], cobrosSinFecha: 0, pedidosLegadoSinCobro: 0,
+      timezone: base.timezone }])).toHaveLength(1);
+  });
 });
 
 describe("payment incident contracts", () => {

@@ -105,6 +105,10 @@ During execution, append each task's commit, exact command, tool version, exit s
 - Plan 03 Task 4 committed as `7c78d24`: post-commit CRUD/Pedido publications, tenant-scoped delete envelopes, Caja/receipt invalidations, gateway transport-failure containment, and shared typed event contracts. Runtime Zod validation is owned by event receivers to preserve the API CommonJS/shared ESM boundary. Root verified shared Jest → **2 suites, 55 tests**; API Jest → **25 suites, 205 tests**; disposable PostgreSQL+Redis integration → **5 suites, 53 tests**; API `tsc --noEmit` and `git diff --check` → exit 0.
 - Plan 03 Task 5 committed as `28b8db2`: tenant/session/schema-fenced authoritative snapshots, version/timestamp-aware event application, short local write lock for enqueue/snapshot/delivery mutations, acknowledged-command crash recovery, dirty single follow-up, Operativa snapshot triggers and Web invalidation refetches. Root independently verified recursive workspace Jest → shared **55**, Operativa **57**, API **205** tests passed; workspace lint → **5/5**, build → **4/4**, `git diff --check` → exit 0. Real IndexedDB, browser lifecycle, multi-tab locks and Socket.IO reconnect acceptance remain pending Plan04.
 
+### Plan 04 Task 2 clarification ruling
+
+- **Ruling:** `pedidosLegadoSinCobro` is a global per-branch unresolved count, not filtered by `Pedido.createdAt` or report range. A closed/cobrado legacy pedido without `Cobro` has no proven collection date; using order creation time would imply an unsupported sales date. Cost if wrong: the historical warning may include records outside the selected report period, but it will not misstate them as dated sales.
+
 ## Next step
 
 Continue with remaining plan 03 offline/realtime tasks, then plan 04 operational completeness and the final browser/CI acceptance gate. No additional design ceremony or automatic SDD artifacts are required.

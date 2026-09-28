@@ -8,6 +8,7 @@ import { Card } from "../_components/Card";
 import { Button } from "../_components/Button";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const DEFAULT_TIMEZONE = "America/Argentina/Buenos_Aires";
 
 const INPUT_CLASSES =
   "rounded-full border border-hairline bg-bg px-4 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
@@ -15,6 +16,7 @@ const INPUT_CLASSES =
 export default function SucursalesPage() {
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [nombre, setNombre] = useState("");
+  const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -29,7 +31,7 @@ export default function SucursalesPage() {
     e.preventDefault();
     setError(null);
     try {
-      const sucursal = await crearSucursal(API_URL, { nombre });
+      const sucursal = await crearSucursal(API_URL, { nombre, timezone });
       setSucursales([...sucursales, sucursal]);
       setNombre("");
     } catch (err) {
@@ -63,6 +65,16 @@ export default function SucursalesPage() {
             required
             className={INPUT_CLASSES}
           />
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Zona horaria IANA
+            <input
+              type="text"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              required
+              className={INPUT_CLASSES}
+            />
+          </label>
           <Button type="submit">Agregar sucursal</Button>
         </form>
       </Card>
@@ -70,7 +82,10 @@ export default function SucursalesPage() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
         {sucursales.map((sucursal) => (
           <div key={sucursal.id} className="rounded-2xl border border-hairline bg-surface p-4 shadow-card">
-            <span className="font-serif text-[15px] font-semibold text-ink">{sucursal.nombre}</span>
+            <div className="space-y-1">
+              <span className="block font-serif text-[15px] font-semibold text-ink">{sucursal.nombre}</span>
+              <span className="text-xs text-muted">{sucursal.timezone}</span>
+            </div>
           </div>
         ))}
       </div>

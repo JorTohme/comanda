@@ -1,5 +1,5 @@
 import { Test } from "@nestjs/testing";
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { SucursalesService } from "./sucursales.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -24,15 +24,21 @@ describe("SucursalesService", () => {
   });
 
   it("creates and returns a sucursal scoped to the org", async () => {
-    const created = { id: "suc-2", nombre: "Sucursal Centro", organizacionId: ORG_ID };
+    const created = { id: "suc-2", nombre: "Sucursal Centro", organizacionId: ORG_ID, timezone: "America/Argentina/Buenos_Aires" };
     prisma.sucursal.create.mockResolvedValue(created);
 
     const result = await service.create({ nombre: "Sucursal Centro" }, ORG_ID);
 
     expect(prisma.sucursal.create).toHaveBeenCalledWith({
-      data: { nombre: "Sucursal Centro", organizacionId: ORG_ID },
+      data: { nombre: "Sucursal Centro", organizacionId: ORG_ID, timezone: "America/Argentina/Buenos_Aires" },
     });
     expect(result).toEqual(created);
+  });
+
+  it("rejects an invalid IANA timezone without creating a branch", async () => {
+    await expect(service.create({ nombre: "Sucursal Centro", timezone: "Mars/Olympus" }, ORG_ID))
+      .rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.sucursal.create).not.toHaveBeenCalled();
   });
 
   it("throws ConflictException when the name already exists in the same org", async () => {

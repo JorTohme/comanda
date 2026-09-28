@@ -250,18 +250,32 @@ export default function ReportesPage() {
 
       {reportes && (
         <>
+          <p className="text-sm text-muted">
+            Fechas y horas en {reportes.timezone}. Las ventas se agrupan por fecha de cobro; los platos son de cobros
+            con fecha conocida y la actividad por hora usa la fecha de creación del pedido.
+          </p>
+          {(reportes.cobrosSinFecha > 0 || reportes.pedidosLegadoSinCobro > 0) && (
+            <Card className="space-y-2">
+              <h2 className="font-serif text-lg font-semibold text-ink">Registros históricos sin fecha o medio verificado</h2>
+              <p className="text-sm text-muted">
+                Se excluyen de las ventas: {reportes.cobrosSinFecha} cobros sin fecha de cobro y
+                {" "}{reportes.pedidosLegadoSinCobro} pedidos cobrados/cerrados de toda la sucursal sin un cobro registrado.
+                Su fecha de cobro y medio de pago son desconocidos; no se infieren.
+              </p>
+            </Card>
+          )}
           <Card className="space-y-4">
-            <h2 className="font-serif text-lg font-semibold text-ink">Rendimiento de ventas</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Ventas por fecha de cobro</h2>
             <VentasChart data={reportes.ventasPorDia} />
           </Card>
 
           <Card className="space-y-4">
-            <h2 className="font-serif text-lg font-semibold text-ink">Platos más pedidos</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Platos cobrados</h2>
             <PlatosChart data={reportes.platosMasPedidos} />
           </Card>
 
           <Card className="space-y-4">
-            <h2 className="font-serif text-lg font-semibold text-ink">Horas pico</h2>
+            <h2 className="font-serif text-lg font-semibold text-ink">Actividad de pedidos por hora</h2>
             <HorasChart data={reportes.horasPico} />
           </Card>
         </>

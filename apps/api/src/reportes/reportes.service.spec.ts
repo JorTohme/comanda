@@ -1,6 +1,6 @@
 import { Test } from "@nestjs/testing";
 import { BadRequestException } from "@nestjs/common";
-import { ReportesService } from "./reportes.service";
+import { ReportesService, toSafeInteger } from "./reportes.service";
 import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -13,10 +13,18 @@ describe("ReportesService", () => {
   let service: ReportesService;
   const prisma = {
     $queryRaw: jest.fn(),
+    sucursal: { findFirstOrThrow: jest.fn(), findMany: jest.fn() },
+    pedido: { count: jest.fn() },
+    cobro: { count: jest.fn() },
   };
 
   beforeEach(async () => {
     jest.resetAllMocks();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.sucursal.findFirstOrThrow.mockResolvedValue({ timezone: "America/Argentina/Buenos_Aires" });
+    prisma.sucursal.findMany.mockResolvedValue([{ id: TENANT.sucursalId, nombre: "Test", timezone: "America/Argentina/Buenos_Aires" }]);
+    prisma.pedido.count.mockResolvedValue(0);
+    prisma.cobro.count.mockResolvedValue(0);
     const moduleRef = await Test.createTestingModule({
       providers: [ReportesService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -32,19 +40,26 @@ describe("ReportesService", () => {
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
 
-    it("scopes all three raw queries to orgId/sucursalId and an exclusive-upper-bound date range", async () => {
+    it.each(["2026-02-30", "2026-09-27T00:00:00Z", "2026-9-7"])("rejects non-real or non-date-only input %s", async (date) => {
+      await expect(service.obtenerReportes({ desde: date, hasta: date }, TENANT)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it("rejects date windows longer than 366 days", async () => {
+      await expect(service.obtenerReportes({ desde: "2025-01-01", hasta: "2026-01-02" }, TENANT)).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it("scopes raw queries to the tenant and uses branch-local SQL date boundaries", async () => {
       prisma.$queryRaw.mockResolvedValue([]);
 
       await service.obtenerReportes({ desde: "2024-02-01", hasta: "2024-02-03" }, TENANT);
 
-      expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
-      for (const [sql] of prisma.$queryRaw.mock.calls) {
-        expect(sql.values).toEqual([
-          TENANT.orgId,
-          TENANT.sucursalId,
-          new Date("2024-02-01"),
-          new Date("2024-02-04"),
-        ]);
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(4);
+      for (const [index, [sql]] of prisma.$queryRaw.mock.calls.entries()) {
+        expect(sql.values).toContain(TENANT.orgId);
+        expect(sql.values).toContain(TENANT.sucursalId);
+        if (index < 3) expect(sql.sql).toMatch(/AT TIME ZONE/);
       }
     });
 
@@ -102,7 +117,24 @@ describe("ReportesService", () => {
 
       const result = await service.obtenerReportes({ desde: "2024-02-01", hasta: "2024-02-28" }, TENANT);
 
-      expect(result).toEqual({ ventasPorDia: [], platosMasPedidos: [], horasPico: [] });
+      expect(result).toEqual({
+        ventasPorDia: [], platosMasPedidos: [], horasPico: [],
+        cobrosSinFecha: 0, pedidosLegadoSinCobro: 0, timezone: "America/Argentina/Buenos_Aires",
+      });
+    });
+
+    it("counts unresolved legacy pedidos globally without assigning them to a report date", async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ cobrosSinFecha: 0n, pedidosLegadoSinCobro: 3n }]);
+
+      const result = await service.obtenerReportes({ desde: "2026-09-27", hasta: "2026-09-27" }, TENANT);
+      const unresolvedQuery = prisma.$queryRaw.mock.calls.find(([sql]) => sql.sql.includes('"pedidosLegadoSinCobro"'))?.[0].sql;
+
+      expect(result.pedidosLegadoSinCobro).toBe(3);
+      expect(unresolvedQuery).not.toMatch(/p\."createdAt"/);
     });
   });
 
@@ -119,9 +151,10 @@ describe("ReportesService", () => {
 
       await service.obtenerConsolidado({ desde: "2024-02-01", hasta: "2024-02-03" }, TENANT.orgId);
 
-      expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
-      for (const [sql] of prisma.$queryRaw.mock.calls) {
-        expect(sql.values).toEqual([TENANT.orgId, new Date("2024-02-01"), new Date("2024-02-04")]);
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(4);
+      for (const [index, [sql]] of prisma.$queryRaw.mock.calls.entries()) {
+        expect(sql.values).toContain(TENANT.orgId);
+        if (index < 3) expect(sql.sql).toMatch(/AT TIME ZONE/);
       }
     });
 
@@ -139,6 +172,10 @@ describe("ReportesService", () => {
         .mockResolvedValueOnce([
           { sucursalId: sucB, sucursalNombre: "Sucursal Centro", hora: 13, pedidos: 4 },
         ]);
+      prisma.sucursal.findMany.mockResolvedValue([
+        { id: sucA, nombre: "Casa Matriz", timezone: "America/Argentina/Buenos_Aires" },
+        { id: sucB, nombre: "Sucursal Centro", timezone: "America/Los_Angeles" },
+      ]);
 
       const result = await service.obtenerConsolidado({ desde: "2024-02-01", hasta: "2024-02-01" }, TENANT.orgId);
 
@@ -159,12 +196,29 @@ describe("ReportesService", () => {
       });
     });
 
-    it("returns an empty array when no pedidos match the range", async () => {
+    it("returns branches with empty metrics when no pedidos match the range", async () => {
       prisma.$queryRaw.mockResolvedValue([]);
 
       const result = await service.obtenerConsolidado({ desde: "2024-02-01", hasta: "2024-02-28" }, TENANT.orgId);
 
-      expect(result).toEqual([]);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        sucursalId: TENANT.sucursalId,
+        timezone: "America/Argentina/Buenos_Aires",
+        ventasPorDia: [], platosMasPedidos: [], horasPico: [],
+        cobrosSinFecha: 0, pedidosLegadoSinCobro: 0,
+      });
+    });
+  });
+
+  describe("toSafeInteger", () => {
+    it("preserves totals above int32 when still exactly representable", () => {
+      expect(toSafeInteger("4000000000")).toBe(4_000_000_000);
+      expect(toSafeInteger(4_000_000_000n)).toBe(4_000_000_000);
+    });
+
+    it.each(["9007199254740992", 9007199254740992n, Number.NaN, "not-a-number"])("rejects unsafe input %s", (value) => {
+      expect(() => toSafeInteger(value as number | bigint | string)).toThrow(BadRequestException);
     });
   });
 });

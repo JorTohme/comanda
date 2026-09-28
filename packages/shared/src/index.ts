@@ -117,6 +117,7 @@ export const sucursalSchema = z.object({
   id: z.string().uuid(),
   nombre: z.string(),
   organizacionId: z.string().uuid(),
+  timezone: z.string(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
@@ -151,7 +152,7 @@ export type CreatePedidoInput = { tipoServicio: TipoServicio; mesaId?: string; p
 export type AbrirTurnoInput = { montoInicial: number };
 export type CerrarTurnoInput = { montoDeclarado: number };
 export type CreateMovimientoInput = { tipo: TipoMovimientoCaja; monto: number; descripcion: string };
-export type CreateSucursalInput = { nombre: string };
+export type CreateSucursalInput = { nombre: string; timezone?: string };
 export interface ApiOptions { accessToken?: string; signal?: AbortSignal; }
 
 // Static "what's next" chain for the client-side UX hint. Does not know about self-delivery
@@ -294,6 +295,9 @@ export const reportesSchema = z.object({
   ventasPorDia: z.array(ventaDiariaSchema),
   platosMasPedidos: z.array(platoRankingSchema),
   horasPico: z.array(horaPicoSchema),
+  cobrosSinFecha: z.number().int().nonnegative(),
+  pedidosLegadoSinCobro: z.number().int().nonnegative(),
+  timezone: z.string(),
 });
 export type Reportes = z.infer<typeof reportesSchema>;
 export async function obtenerReportes(baseUrl: string, desde: string, hasta: string, options?: ApiOptions): Promise<Reportes> {

@@ -253,6 +253,7 @@ model Organizacion {
 model Sucursal {
   id             String         @id @default(uuid())
   nombre         String
+  timezone       String         @default("America/Argentina/Buenos_Aires")
   organizacionId String
   organizacion   Organizacion   @relation(fields: [organizacionId], references: [id], onDelete: Cascade)
   usuarios       Usuario[]
