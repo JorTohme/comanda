@@ -5,13 +5,12 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import type { EstadoPedido, Prisma, TipoServicio } from "@prisma/client";
 import type { JwtClaims, TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { MesasService } from "../salon/mesas/mesas.service";
+import { MesasService, normalizeMesaRealtime } from "../salon/mesas/mesas.service";
 import { CajaService } from "../caja/caja.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { lockSucursal } from "../prisma/branch-lock";
@@ -106,8 +105,6 @@ function assertActorTenant(actor: JwtClaims, tenant: TenantContext): void {
 
 @Injectable()
 export class PedidosService {
-  private readonly logger = new Logger(PedidosService.name);
-
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MesasService) private readonly mesasService: MesasService,
@@ -121,7 +118,11 @@ export class PedidosService {
     const normalized = normalizePedido(input);
     const requestFingerprint = createHash("sha256").update(normalized.canonical).digest("hex");
 
-    let outcome: { pedido: Awaited<ReturnType<PrismaService["pedido"]["findFirstOrThrow"]>>; mesa: unknown; created: boolean };
+    let outcome: {
+      pedido: Prisma.PedidoGetPayload<{ include: { items: true; cobro: true } }>;
+      mesa: Prisma.MesaGetPayload<object> | null;
+      created: boolean;
+    };
     try {
       outcome = await this.prisma.$transaction(async (tx) => {
         await lockSucursal(tx, tenant);
@@ -201,8 +202,8 @@ export class PedidosService {
     }
 
     if (!outcome.created) return outcome.pedido;
-    this.publish(tenant, "pedido.actualizado", outcome.pedido);
-    if (outcome.mesa) this.publish(tenant, "mesa.actualizada", outcome.mesa);
+    this.realtime.emitToSucursal(tenant.sucursalId, "pedido.creado", outcome.pedido);
+    if (outcome.mesa) this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", normalizeMesaRealtime(outcome.mesa));
     return outcome.pedido;
   }
 
@@ -280,16 +281,8 @@ export class PedidosService {
       return { pedido: updated, mesa };
     });
 
-    this.publish(tenant, "pedido.actualizado", outcome.pedido);
-    if (outcome.mesa) this.publish(tenant, "mesa.actualizada", outcome.mesa);
+    this.realtime.emitToSucursal(tenant.sucursalId, "pedido.actualizado", outcome.pedido);
+    if (outcome.mesa) this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", normalizeMesaRealtime(outcome.mesa));
     return outcome.pedido;
-  }
-
-  private publish(tenant: TenantContext, event: string, payload: unknown): void {
-    try {
-      this.realtime.emitToSucursal(tenant.sucursalId, event, payload);
-    } catch (error) {
-      this.logger.error(`Failed to publish ${event} after committed order mutation`, error instanceof Error ? error.stack : undefined);
-    }
   }
 }

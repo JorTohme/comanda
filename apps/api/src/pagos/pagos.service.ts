@@ -4,6 +4,7 @@ import {
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Pago } from "@prisma/client";
+import type { RealtimeServerPayload } from "@comanda/shared";
 import type { JwtClaims, TenantContext } from "../auth/jwt.service";
 import { lockSucursal } from "../prisma/branch-lock";
 import { PrismaService } from "../prisma/prisma.service";
@@ -187,7 +188,7 @@ export class PagosService {
 
   private async reconcileAttempt(initial: Pago, payment: PagoMercadoPago, expectedPaymentId: string) {
     const tenant: TenantContext = { orgId: initial.orgId, sucursalId: initial.sucursalId };
-    let outcome: { estado: string; incidente: string | null; pedido?: unknown };
+    let outcome: { estado: string; incidente: string | null; pedido?: RealtimeServerPayload<"pedido.actualizado">; turnoId?: string | null };
     try {
       outcome = await this.prisma.$transaction(async (tx) => {
       await lockSucursal(tx, tenant);
@@ -228,12 +229,14 @@ export class PagosService {
         return { estado: "incidente", incidente: incident };
       }
       const approved = await tx.pago.update({ where: { id: attempt.id }, data: { estado: "aprobado", mpPaymentId: payment.id, incidente: attempt.incidente } });
-      await this.cobros.postDigital(tx, approved, payment.id, payment.approvedAt!, tenant);
+      const receipt = await this.cobros.postDigital(tx, approved, payment.id, payment.approvedAt!, tenant);
       let updatedOrder = order;
       if (order.estado === "entregado") {
         updatedOrder = await tx.pedido.update({ where: { id: order.id, orgId: tenant.orgId, sucursalId: tenant.sucursalId, version: order.version }, data: { estado: "cobrado", version: { increment: 1 } }, include: { items: true, cobro: true } });
+      } else {
+        updatedOrder = await tx.pedido.findFirstOrThrow({ where: { id: order.id, ...tenant }, include: { items: true, cobro: true } });
       }
-      return { estado: "aprobado", incidente: approved.incidente, pedido: updatedOrder };
+      return { estado: "aprobado", incidente: approved.incidente, pedido: updatedOrder, turnoId: receipt.turnoCajaId };
       });
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
@@ -247,9 +250,9 @@ export class PagosService {
         return { estado: "incidente", incidente: incident };
       });
     }
-    if ("pedido" in outcome) {
-      try { this.realtime.emitToSucursal(tenant.sucursalId, "pedido.actualizado", outcome.pedido); }
-      catch (error) { this.logger.error("Failed to publish payment receipt after commit", error instanceof Error ? error.stack : undefined); }
+    if (outcome.pedido) {
+      this.realtime.emitToSucursal(tenant.sucursalId, "pedido.actualizado", outcome.pedido);
+      this.realtime.emitToSucursal(tenant.sucursalId, "caja.actualizada", { ...tenant, turnoId: outcome.turnoId ?? null });
     }
     return { estado: outcome.estado, incidente: outcome.incidente };
   }

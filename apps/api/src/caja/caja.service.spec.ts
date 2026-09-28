@@ -4,6 +4,7 @@ import { CajaService } from "./caja.service";
 import { TenantContext } from "../auth/jwt.service";
 import { PrismaService } from "../prisma/prisma.service";
 import type { JwtClaims } from "../auth/jwt.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
@@ -29,6 +30,7 @@ describe("CajaService", () => {
     $queryRaw: jest.fn().mockResolvedValue([{ id: TENANT.sucursalId }]),
     $transaction: jest.fn(),
   };
+  const realtime = { emitToSucursal: jest.fn() };
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -36,8 +38,9 @@ describe("CajaService", () => {
     prisma.pedido.count.mockResolvedValue(0);
     prisma.$queryRaw.mockResolvedValue([{ id: TENANT.sucursalId }]);
     prisma.$transaction.mockImplementation((callback) => callback(prisma));
+    realtime.emitToSucursal.mockReset();
     const moduleRef = await Test.createTestingModule({
-      providers: [CajaService, { provide: PrismaService, useValue: prisma }],
+    providers: [CajaService, { provide: PrismaService, useValue: prisma }, { provide: RealtimeGateway, useValue: realtime }],
     }).compile();
 
     service = moduleRef.get(CajaService);
@@ -48,6 +51,13 @@ describe("CajaService", () => {
       prisma.turnoCaja.findFirst.mockResolvedValue(null);
       const created = { id: "turno-1", montoInicial: 10000, abiertoPorId: "usuario-1", estado: "abierto", ...TENANT };
       prisma.turnoCaja.create.mockResolvedValue(created);
+      const order: string[] = [];
+      prisma.turnoCaja.create.mockImplementation(async () => { order.push("write"); return created; });
+      prisma.$transaction.mockImplementation(async (callback) => {
+        const result = await callback(prisma);
+        order.push("commit");
+        return result;
+      });
 
       const result = await service.abrirTurno({ montoInicial: 10000 }, TENANT, ACTOR);
 
@@ -56,6 +66,11 @@ describe("CajaService", () => {
         data: { montoInicial: 10000, abiertoPorId: ACTOR.sub, semantica: "efectivo", ...TENANT },
       });
       expect(result).toEqual(created);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "caja.actualizada", {
+        ...TENANT,
+        turnoId: created.id,
+      });
+      expect(order).toEqual(["write", "commit"]);
     });
 
     it("throws ConflictException when an open turno already exists for the tenant", async () => {
@@ -65,6 +80,13 @@ describe("CajaService", () => {
         ConflictException,
       );
       expect(prisma.turnoCaja.create).not.toHaveBeenCalled();
+      expect(realtime.emitToSucursal).not.toHaveBeenCalled();
+    });
+
+    it("does not publish when the transaction fails", async () => {
+      prisma.$transaction.mockRejectedValue(new Error("commit failed"));
+      await expect(service.abrirTurno({ montoInicial: 100 }, TENANT, ACTOR)).rejects.toThrow("commit failed");
+      expect(realtime.emitToSucursal).not.toHaveBeenCalled();
     });
   });
 
@@ -86,6 +108,7 @@ describe("CajaService", () => {
         data: { turnoCajaId: "turno-1", tipo: "ingreso", monto: 500, descripcion: "propina" },
       });
       expect(result).toEqual(created);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "caja.actualizada", { ...TENANT, turnoId: "turno-1" });
     });
 
     it("throws NotFoundException when the turno isn't owned by the tenant", async () => {
@@ -163,6 +186,7 @@ describe("CajaService", () => {
           diferencia: 0,
         }),
       });
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "caja.actualizada", { ...TENANT, turnoId: "turno-1" });
     });
 
     it("returns an identical frozen close and conflicts on a changed declaration", async () => {

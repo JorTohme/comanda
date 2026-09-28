@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Persistence and HTTP contract for `Mesa`: CRUD, `capacidad`, three-state occupancy (`libre` / `ocupada` / `pedido_en_curso`), spatial position on the 2D floor plan, and validation. Since Iter 3, `pedido_en_curso` also has an automatic driver wired from the `pedidos` capability (see "pedido_en_curso has a manual path and an automatic driver" below); `Mesa` itself still holds no FK to `Pedido`, only a back-relation. Since Iter 6, `Mesa` also carries its position on the floor plan (see "Spatial position on the 2D floor plan" below). Out of scope: resize/rotate drag handles (position only, size/shape/rotation are form-edited), Redis locking, authentication/authorization, tenancy filtering by `org_id`/`sucursal_id` (columns exist but unused).
+Persistence and HTTP contract for tenant-scoped `Mesa`: CRUD, `capacidad`, three-state occupancy (`libre` / `ocupada` / `pedido_en_curso`), spatial position on the 2D floor plan, validation, and post-commit realtime snapshots/delete envelopes. Since Iter 3, `pedido_en_curso` also has an automatic driver wired from the `pedidos` capability (see "pedido_en_curso has a manual path and an automatic driver" below); `Mesa` itself still holds no FK to `Pedido`, only a back-relation. Since Iter 6, `Mesa` also carries its position on the floor plan (see "Spatial position on the 2D floor plan" below). Out of scope: resize/rotate drag handles (position only, size/shape/rotation are form-edited).
 
 ## ADDED Requirements
 
@@ -53,6 +53,16 @@ The system MUST update an existing Mesa's `nombre`, `capacidad`, and/or `estado`
 - GIVEN a Mesa exists with id X
 - WHEN a client sends `PATCH /mesas/X` with an empty `nombre`, a non-positive `capacidad`, or an `estado` outside the enum
 - THEN the system MUST respond 400 and MUST NOT persist the change
+
+### Requirement: Publish committed Mesa CRUD events
+
+The system MUST publish `mesa.creada` and `mesa.actualizada` with the canonical shared Mesa snapshot after successful writes, and `mesa.eliminada` with `{ id, orgId, sucursalId }` after deletion. Events MUST be emitted after the transaction commits; persistence errors MUST produce no event and publication failures MUST NOT fail the committed HTTP mutation.
+
+#### Scenario: Mesa delete event is tenant-scoped
+
+- GIVEN a Mesa owned by tenant `(orgId, sucursalId)` is deleted successfully
+- WHEN the database transaction commits
+- THEN `mesa.eliminada` MUST be emitted to that branch with only the Mesa id and tenant identifiers
 
 ### Requirement: Delete Mesa
 

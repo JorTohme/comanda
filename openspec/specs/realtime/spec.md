@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Gateway Socket.io con adapter Redis para propagar cambios de `Pedido`, `Mesa` y `Plato` en tiempo real a los clientes conectados de la misma sucursal, reemplazando el polling de `apps/operativa`. Fuera de alcance: revocación de socket en expiración de JWT, eventos granulares por transición, `apps/web` `/caja`.
+Gateway Socket.io con adapter Redis para propagar invalidaciones y snapshots CRUD a clientes conectados de la misma sucursal. Los datos persistidos siguen siendo la autoridad: perder un evento nunca revierte ni falla una escritura confirmada.
 
 ## ADDED Requirements
 
@@ -40,7 +40,7 @@ El sistema MUST emitir `pedido.actualizado` con el `Pedido` completo (incluyendo
 
 - GIVEN un cliente conectado a la sala de la sucursal
 - WHEN se crea un `Pedido` vía `POST /pedidos` en esa sucursal
-- THEN el sistema MUST emitir `pedido.actualizado` con el `Pedido` creado, incluyendo `items`
+- THEN el sistema MUST emitir `pedido.creado` con el `Pedido` creado, incluyendo `items`
 
 #### Scenario: Avanzar el estado lo emite
 
@@ -50,7 +50,7 @@ El sistema MUST emitir `pedido.actualizado` con el `Pedido` completo (incluyendo
 
 ### Requirement: Evento mesa.actualizada
 
-El sistema MUST emitir `mesa.actualizada` con la `Mesa` completa cada vez que su `estado` cambia — ya sea por `PATCH /mesas/:id` directo o por el driver automático de `pedidos` (ver spec `salon`, requirement "pedido_en_curso has a manual path and an automatic driver") — y también al crearse una `Mesa`.
+El sistema MUST emitir `mesa.creada` con la `Mesa` completa al crearla, y `mesa.actualizada` cada vez que su `estado` cambia — ya sea por `PATCH /mesas/:id` directo o por el driver automático de `pedidos` (ver spec `salon`, requirement "pedido_en_curso has a manual path and an automatic driver").
 
 #### Scenario: Cambio manual de estado lo emite
 
@@ -73,3 +73,35 @@ El sistema MUST emitir `plato.actualizado` con el `Plato` completo cada vez que 
 - GIVEN un cliente conectado a la sala de la sucursal
 - WHEN un `Plato` cambia su campo `disponible` vía `PATCH /platos/:id`
 - THEN el sistema MUST emitir `plato.actualizado` con el `Plato` actualizado
+
+### Requirement: CRUD snapshots and delete envelopes
+
+The system MUST publish `categoria.creada` and `categoria.actualizada` with the canonical Categoria snapshot and `categoria.eliminada` with `{ id, orgId, sucursalId }`; the equivalent Plato events are `plato.creado`, `plato.actualizado`, and `plato.eliminado`, and Mesa events are `mesa.creada`, `mesa.actualizada`, and `mesa.eliminada`. Create/update events carry the canonical shared entity payload. Delete events carry only the entity id and tenant UUIDs. Creation of a Pedido uses `pedido.creado`; later changes use `pedido.actualizado`.
+
+The API MUST constrain event names and payloads against the shared TypeScript event contract at compile time. Runtime Zod validation MUST occur in event receivers (including `apps/operativa` and `apps/web`) before applying payloads. The API's CommonJS Nest process MUST NOT load the shared ESM runtime module solely to validate outbound events.
+
+#### Scenario: Delete publishes a tenant-scoped envelope
+
+- GIVEN an entity is owned by organization O and branch S
+- WHEN it is deleted successfully
+- THEN its delete event MUST contain only the deleted id and tenant identifiers and MUST be emitted to branch S
+
+### Requirement: Best-effort committed-write publication
+
+Realtime publication MUST be attempted only after persistence commits. Synchronous transport errors MUST be logged and contained at the gateway boundary so an already committed HTTP mutation remains successful. Clients MUST treat events as invalidation/snapshot hints and reload authoritative data from the API.
+
+#### Scenario: Transport failure does not fail a committed mutation
+
+- GIVEN a database write has committed
+- WHEN Socket.io/Redis publication throws synchronously
+- THEN the gateway MUST log the transport error and the HTTP write MUST still succeed
+
+### Requirement: Caja invalidation event
+
+The system MUST emit `caja.actualizada` after successful shift, movement, or receipt mutations. Its payload MUST contain only `{ orgId, sucursalId, turnoId }`, where `turnoId` may be `null`; it MUST NOT contain trusted balance totals. Cash and digital receipt mutations also emit `pedido.actualizado` with the Pedido including its Cobro.
+
+#### Scenario: Receipt changes Caja and Pedido views
+
+- GIVEN a cash or digital receipt is committed
+- WHEN clients receive its events
+- THEN they MUST receive the updated Pedido snapshot and a Caja invalidation for the applicable shift (or `null` when unassigned)

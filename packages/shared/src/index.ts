@@ -67,6 +67,32 @@ export type TurnoCaja = z.infer<typeof turnoCajaSchema>;
 const pedidoCajaResumenSchema = pedidoSchema.omit({ version: true, cobro: true });
 export const turnoCajaDetalleSchema = turnoCajaSchema.extend({ movimientos: z.array(movimientoCajaSchema), pedidos: z.array(pedidoCajaResumenSchema), totalCalculado: z.number().int().nullable(), cobrosDigitalesSinTurno: z.number().int().nonnegative(), pedidosLegacySinCobro: z.number().int().nonnegative() });
 export type TurnoCajaDetalle = z.infer<typeof turnoCajaDetalleSchema>;
+
+export const deletedEntityEventSchema = z.object({ id: z.string().uuid(), orgId: z.string().uuid(), sucursalId: z.string().uuid() });
+export const cajaInvalidationEventSchema = z.object({ orgId: z.string().uuid(), sucursalId: z.string().uuid(), turnoId: z.string().uuid().nullable() });
+export const realtimeEventSchemas = {
+  "categoria.creada": categoriaSchema,
+  "categoria.actualizada": categoriaSchema,
+  "categoria.eliminada": deletedEntityEventSchema,
+  "plato.creado": platoSchema,
+  "plato.actualizado": platoSchema,
+  "plato.eliminado": deletedEntityEventSchema,
+  "mesa.creada": mesaSchema,
+  "mesa.actualizada": mesaSchema,
+  "mesa.eliminada": deletedEntityEventSchema,
+  "pedido.creado": pedidoSchema,
+  "pedido.actualizado": pedidoSchema,
+  "caja.actualizada": cajaInvalidationEventSchema,
+} as const;
+export type RealtimeEventName = keyof typeof realtimeEventSchemas;
+export type RealtimeEventPayload<T extends RealtimeEventName> = z.infer<(typeof realtimeEventSchemas)[T]>;
+type RealtimeServerValue<T> = T extends readonly (infer U)[] ? RealtimeServerValue<U>[]
+  : T extends object ? { [K in keyof T]: K extends "createdAt" | "updatedAt" | "cobradoEn" | "abiertoEn" | "cerradoEn" | "leaseUntil"
+    ? T[K] | Date
+    : RealtimeServerValue<T[K]> }
+  : T;
+export type RealtimeServerPayload<T extends RealtimeEventName> = RealtimeServerValue<RealtimeEventPayload<T>>;
+
 export const estadoPagoSchema = z.enum(["creando", "pendiente", "aprobado", "rechazado", "incidente"]);
 export type EstadoPago = z.infer<typeof estadoPagoSchema>;
 export const pagoSchema = tenantSchema.extend({

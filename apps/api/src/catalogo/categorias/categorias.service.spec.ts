@@ -3,6 +3,7 @@ import { NotFoundException } from "@nestjs/common";
 import { CategoriasService } from "./categorias.service";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
@@ -20,11 +21,14 @@ describe("CategoriasService", () => {
       delete: jest.fn(),
     },
   };
+  const realtime = { emitToSucursal: jest.fn() };
+  const timeline: string[] = [];
 
   beforeEach(async () => {
     jest.resetAllMocks();
+    timeline.length = 0;
     const moduleRef = await Test.createTestingModule({
-      providers: [CategoriasService, { provide: PrismaService, useValue: prisma }],
+      providers: [CategoriasService, { provide: PrismaService, useValue: prisma }, { provide: RealtimeGateway, useValue: realtime }],
     }).compile();
 
     service = moduleRef.get(CategoriasService);
@@ -38,6 +42,25 @@ describe("CategoriasService", () => {
 
     expect(prisma.categoria.create).toHaveBeenCalledWith({ data: { nombre: "Bebidas", ...TENANT } });
     expect(result).toEqual(created);
+  });
+
+  it("publishes created category only after the committed row is returned", async () => {
+    const created = { id: "00000000-0000-0000-0000-000000000021", nombre: "Bebidas", ...TENANT, createdAt: new Date(), updatedAt: new Date() };
+    prisma.categoria.create.mockImplementation(async () => { timeline.push("write committed"); return created; });
+    realtime.emitToSucursal.mockImplementation(() => timeline.push("event"));
+
+    await service.create({ nombre: "Bebidas" }, TENANT);
+
+    expect(timeline).toEqual(["write committed", "event"]);
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "categoria.creada", created);
+  });
+
+  it("does not publish a category when persistence rejects", async () => {
+    prisma.categoria.create.mockRejectedValue(new Error("database failed"));
+
+    await expect(service.create({ nombre: "Bebidas" }, TENANT)).rejects.toThrow("database failed");
+
+    expect(realtime.emitToSucursal).not.toHaveBeenCalled();
   });
 
   it("returns all categorias", async () => {
@@ -66,6 +89,7 @@ describe("CategoriasService", () => {
       data: { nombre: "Bebidas Frías" },
     });
     expect(result).toEqual(updated);
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "categoria.actualizada", updated);
   });
 
   it("throws NotFoundException when updating a nonexistent categoria", async () => {
@@ -85,6 +109,17 @@ describe("CategoriasService", () => {
 
     expect(prisma.categoria.delete).toHaveBeenCalledWith({ where: { id: "cat-1" } });
     expect(result).toEqual(deleted);
+  });
+
+  it("publishes a tenant-scoped delete envelope rather than a partial deleted row", async () => {
+    const id = "00000000-0000-0000-0000-000000000021";
+    const deleted = { id, nombre: "Bebidas", ...TENANT, createdAt: new Date(), updatedAt: new Date() };
+    prisma.categoria.findFirst.mockResolvedValue({ id });
+    prisma.categoria.delete.mockResolvedValue(deleted);
+
+    await service.remove(id, TENANT);
+
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "categoria.eliminada", { id, ...TENANT });
   });
 
   it("throws NotFoundException when deleting a nonexistent categoria", async () => {

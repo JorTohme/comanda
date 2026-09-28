@@ -4,6 +4,7 @@ import { PlatosService } from "./platos.service";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
+import { JwtService } from "../../auth/jwt.service";
 
 const TENANT: TenantContext = {
   orgId: "00000000-0000-0000-0000-000000000011",
@@ -62,6 +63,27 @@ describe("PlatosService", () => {
       data: { nombre: "Agua", precio: 1000, categoriaId: "cat-1", disponible: true, ...TENANT },
     });
     expect(result.disponible).toBe(true);
+  });
+
+  it("publishes a created plato only after the transaction has committed", async () => {
+    const timeline: string[] = [];
+    const created = {
+      id: "00000000-0000-0000-0000-000000000031", nombre: "Agua", precio: 1000, disponible: true,
+      categoriaId: "00000000-0000-0000-0000-000000000021", ...TENANT, createdAt: new Date(), updatedAt: new Date(),
+    };
+    prisma.categoria.findFirst.mockResolvedValue({ id: created.categoriaId });
+    prisma.plato.create.mockResolvedValue(created);
+    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) => {
+      const result = await callback(prisma);
+      timeline.push("commit");
+      return result;
+    });
+    realtime.emitToSucursal.mockImplementation(() => timeline.push("event"));
+
+    await service.create({ nombre: "Agua", precio: 1000, categoriaId: created.categoriaId }, TENANT);
+
+    expect(timeline).toEqual(["commit", "event"]);
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "plato.creado", created);
   });
 
   it("rejects creation when categoriaId does not reference an existing categoria", async () => {
@@ -148,5 +170,33 @@ describe("PlatosService", () => {
     prisma.plato.findFirst.mockResolvedValue({ id: "plato-1" });
 
     await expect(service.remove("plato-1", TENANT)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("publishes a tenant-scoped delete envelope after removing a plato", async () => {
+    const id = "00000000-0000-0000-0000-000000000031";
+    prisma.plato.findFirst.mockResolvedValue({ id });
+    prisma.plato.delete.mockResolvedValue({ id, ...TENANT });
+
+    await service.remove(id, TENANT);
+
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "plato.eliminado", { id, ...TENANT });
+  });
+
+  it("does not publish when the transaction fails", async () => {
+    prisma.$transaction.mockRejectedValue(new Error("commit failed"));
+
+    await expect(service.update("plato-1", { disponible: false }, TENANT)).rejects.toThrow("commit failed");
+
+    expect(realtime.emitToSucursal).not.toHaveBeenCalled();
+  });
+
+  it("keeps a committed catalog write successful when the real gateway transport throws", async () => {
+    prisma.categoria.findFirst.mockResolvedValue({ id: "cat-1" });
+    prisma.plato.create.mockResolvedValue({ id: "plato-1" });
+    const gateway = new RealtimeGateway({} as JwtService);
+    gateway.server = { to: jest.fn().mockImplementation(() => { throw new Error("redis down"); }) } as never;
+    const withRealGateway = new PlatosService(prisma as never, gateway);
+
+    await expect(withRealGateway.create({ nombre: "Agua", precio: 1000, categoriaId: "cat-1" }, TENANT)).resolves.toEqual({ id: "plato-1" });
   });
 });

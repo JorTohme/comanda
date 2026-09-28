@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Cobro, Pago, Prisma } from "@prisma/client";
 import type { JwtClaims, TenantContext } from "../auth/jwt.service";
 import { CajaService } from "../caja/caja.service";
@@ -15,8 +15,6 @@ function assertActor(actor: JwtClaims, tenant: TenantContext): void {
 
 @Injectable()
 export class CobrosService {
-  private readonly logger = new Logger(CobrosService.name);
-
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(CajaService) private readonly caja: CajaService,
@@ -54,8 +52,8 @@ export class CobrosService {
         include: { items: true, cobro: true },
       });
     });
-    try { this.realtime.emitToSucursal(tenant.sucursalId, "pedido.actualizado", pedido); }
-    catch (error) { this.logger.error("Failed to publish pedido.actualizado after cash collection", error instanceof Error ? error.stack : undefined); }
+    this.realtime.emitToSucursal(tenant.sucursalId, "pedido.actualizado", pedido);
+    this.realtime.emitToSucursal(tenant.sucursalId, "caja.actualizada", { ...tenant, turnoId: pedido.cobro?.turnoCajaId ?? null });
     return pedido;
   }
 

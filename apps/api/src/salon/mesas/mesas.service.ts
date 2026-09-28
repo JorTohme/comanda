@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { EstadoMesa, Prisma } from "@prisma/client";
 import { TenantContext } from "../../auth/jwt.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -7,14 +7,17 @@ import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { CreateMesaDto } from "./dto/create-mesa.dto";
 import { UpdateMesaDto } from "./dto/update-mesa.dto";
 
+export function normalizeMesaRealtime<T extends { forma: string | null }>(mesa: T) {
+  const forma: "rect" | "circle" | null = mesa.forma === "rect" || mesa.forma === "circle" ? mesa.forma : null;
+  return { ...mesa, forma };
+}
+
 function isForeignKeyViolationError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "P2003";
 }
 
 @Injectable()
 export class MesasService {
-  private readonly logger = new Logger(MesasService.name);
-
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RealtimeGateway) private readonly realtime: RealtimeGateway,
@@ -25,7 +28,7 @@ export class MesasService {
       await lockSucursal(tx, tenant);
       return tx.mesa.create({ data: { ...dto, estado: dto.estado ?? "libre", ...tenant } });
     });
-    this.publish(tenant, mesa);
+    this.realtime.emitToSucursal(tenant.sucursalId, "mesa.creada", normalizeMesaRealtime(mesa));
     return mesa;
   }
 
@@ -45,7 +48,7 @@ export class MesasService {
       }
       return tx.mesa.update({ where: { id }, data: dto });
     });
-    this.publish(tenant, mesa);
+    this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", normalizeMesaRealtime(mesa));
     return mesa;
   }
 
@@ -60,6 +63,7 @@ export class MesasService {
         await this.assertOwnedMesa(tx, id, tenant);
         return tx.mesa.delete({ where: { id } });
       });
+      this.realtime.emitToSucursal(tenant.sucursalId, "mesa.eliminada", { id, ...tenant });
       return mesa;
     } catch (error) {
       if (isForeignKeyViolationError(error)) throw new ConflictException(`Mesa ${id} is referenced by an existing Pedido`);
@@ -81,13 +85,5 @@ export class MesasService {
 
   async marcarEstado(tx: Prisma.TransactionClient, mesaId: string, estado: EstadoMesa) {
     return tx.mesa.update({ where: { id: mesaId }, data: { estado } });
-  }
-
-  private publish(tenant: TenantContext, mesa: unknown): void {
-    try {
-      this.realtime.emitToSucursal(tenant.sucursalId, "mesa.actualizada", mesa);
-    } catch (error) {
-      this.logger.error("Failed to publish mesa.actualizada after committed mesa mutation", error instanceof Error ? error.stack : undefined);
-    }
   }
 }

@@ -13,6 +13,7 @@
     "invite-admin": "node scripts/invite-admin.mjs"
   },
   "dependencies": {
+    "@comanda/shared": "workspace:*",
     "@nestjs/common": "^10.4.4",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.4",

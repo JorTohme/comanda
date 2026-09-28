@@ -3,6 +3,7 @@ import type { MetodoCobro, Prisma, TipoMovimientoCaja } from "@prisma/client";
 import type { JwtClaims, TenantContext } from "../auth/jwt.service";
 import { lockSucursal } from "../prisma/branch-lock";
 import { PrismaService } from "../prisma/prisma.service";
+import { RealtimeGateway } from "../realtime/realtime.gateway";
 
 const MAX_INT = 2_147_483_647n;
 const MIN_INT = -2_147_483_648n;
@@ -32,7 +33,10 @@ function assertActor(actor: JwtClaims, tenant: TenantContext): void {
 
 @Injectable()
 export class CajaService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RealtimeGateway) private readonly realtime: RealtimeGateway,
+  ) {}
 
   calcularTotales(turno: TotalsInput) {
     const valid = (n: number) => Number.isSafeInteger(n);
@@ -62,12 +66,14 @@ export class CajaService {
   async abrirTurno(dto: { montoInicial: number }, tenant: TenantContext, actor: JwtClaims) {
     assertActor(actor, tenant);
     validateMoney(dto.montoInicial, "Opening cash");
-    return this.prisma.$transaction(async (tx) => {
+    const turno = await this.prisma.$transaction(async (tx) => {
       await lockSucursal(tx, tenant);
       const existing = await tx.turnoCaja.findFirst({ where: { ...tenant, estado: "abierto" } });
       if (existing) throw new ConflictException("Ya existe un turno de caja abierto para esta sucursal");
       return tx.turnoCaja.create({ data: { montoInicial: dto.montoInicial, abiertoPorId: actor.sub, ...tenant, semantica: EFFECTIVE } });
     });
+    this.publishInvalidation(tenant, turno.id);
+    return turno;
   }
 
   async obtenerActual(tenant: TenantContext) {
@@ -98,34 +104,39 @@ export class CajaService {
   ) {
     assertActor(actor, tenant);
     validateMoney(dto.monto, "Movement amount");
-    return this.prisma.$transaction(async (tx) => {
+    const movimiento = await this.prisma.$transaction(async (tx) => {
       await lockSucursal(tx, tenant);
       const turno = await this.assertOwnTurnoAbierto(tx, turnoId, tenant);
       return tx.movimientoCaja.create({ data: { turnoCajaId: turno.id, ...dto } });
     });
+    this.publishInvalidation(tenant, turnoId);
+    return movimiento;
   }
 
   async cerrarTurno(id: string, dto: { montoDeclarado: number }, tenant: TenantContext, actor: JwtClaims) {
     assertActor(actor, tenant);
     validateMoney(dto.montoDeclarado, "Declared cash");
-    return this.prisma.$transaction(async (tx) => {
+    const outcome = await this.prisma.$transaction(async (tx) => {
       await lockSucursal(tx, tenant);
       const turno = await tx.turnoCaja.findFirst({
         where: { id, ...tenant }, include: { movimientos: true, cobros: true },
       });
       if (!turno) throw new NotFoundException(`TurnoCaja ${id} not found`);
       if (turno.estado === "cerrado") {
-        if (turno.montoDeclarado === dto.montoDeclarado) return turno;
+        if (turno.montoDeclarado === dto.montoDeclarado) return { turno, changed: false };
         throw new ConflictException(`TurnoCaja ${id} is already closed with another declared amount`);
       }
       if (turno.semantica === LEGACY) throw new ConflictException("Legacy mixed shifts cannot be closed by the current cash workflow");
       const totals = this.calcularTotales(turno);
       const diferencia = safeInt(BigInt(dto.montoDeclarado) - BigInt(totals.totalCalculado), "Cash difference");
-      return tx.turnoCaja.update({
+      const closed = await tx.turnoCaja.update({
         where: { id, orgId: tenant.orgId, sucursalId: tenant.sucursalId },
         data: { estado: "cerrado", cerradoPorId: actor.sub, cerradoEn: new Date(), montoDeclarado: dto.montoDeclarado, ...totals, diferencia },
       });
+      return { turno: closed, changed: true };
     });
+    if (outcome.changed) this.publishInvalidation(tenant, id);
+    return outcome.turno;
   }
 
   /** Read-only lookup for a caller that already holds the Sucursal lock. */
@@ -158,5 +169,9 @@ export class CajaService {
     if (!turno) throw new NotFoundException(`TurnoCaja ${id} not found`);
     if (turno.estado === "cerrado" || turno.semantica === LEGACY) throw new ConflictException(`TurnoCaja ${id} does not accept cash movements`);
     return turno;
+  }
+
+  private publishInvalidation(tenant: TenantContext, turnoId: string | null): void {
+    this.realtime.emitToSucursal(tenant.sucursalId, "caja.actualizada", { ...tenant, turnoId });
   }
 }

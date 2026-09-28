@@ -22,7 +22,7 @@ function services(f: Awaited<ReturnType<typeof moneyFixture>>) {
     pedidos: new PedidosService(
       f.prisma,
       new MesasService(f.prisma, realtime as never),
-      new CajaService(f.prisma),
+      new CajaService(f.prisma, realtime as never),
       realtime as never,
     ),
   };
@@ -51,12 +51,14 @@ describe("orders and fulfillment with PostgreSQL", () => {
   it("creates one order for 20 concurrent retries and conflicts when the same key changes payload", async () => {
     const f = await moneyFixture();
     try {
-      const { pedidos } = services(f);
+      const { pedidos, realtime } = services(f);
       const input = { ...barraInput(), items: [{ platoId: f.platoId, cantidad: 1 }] };
       const rows = await Promise.all(Array.from({ length: 20 }, () => createAsActor(pedidos, input, f.tenant, f.actor)));
 
       expect(new Set(rows.map((row) => row.id)).size).toBe(1);
       expect(rows[0].cobro).toBeNull();
+      expect(realtime.emitToSucursal).toHaveBeenCalledTimes(1);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(f.tenant.sucursalId, "pedido.creado", expect.objectContaining({ id: rows[0].id }));
       await expect(createAsActor(pedidos, { ...input, items: [{ platoId: f.platoId, cantidad: 2 }] }, f.tenant, f.actor))
         .rejects.toBeInstanceOf(ConflictException);
       expect(await f.prisma.pedido.count({ where: { ...f.tenant } })).toBe(1);

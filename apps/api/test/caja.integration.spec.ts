@@ -11,10 +11,12 @@ import { moneyFixture } from "./money-fixture";
 describe("cash drawer snapshots with PostgreSQL", () => {
   let fixture: Awaited<ReturnType<typeof moneyFixture>>;
   let caja: CajaService;
+  const realtime = { emitToSucursal: jest.fn() };
 
   beforeEach(async () => {
     fixture = await moneyFixture();
-    caja = new CajaService(fixture.prisma);
+    realtime.emitToSucursal.mockReset();
+    caja = new CajaService(fixture.prisma, realtime as never);
   });
 
   afterEach(async () => fixture.dispose());

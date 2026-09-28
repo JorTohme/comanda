@@ -1,6 +1,8 @@
+import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { RealtimeGateway } from "./realtime.gateway";
 import { JwtService } from "../auth/jwt.service";
+import type { RealtimeServerPayload } from "@comanda/shared";
 
 describe("RealtimeGateway", () => {
   let gateway: RealtimeGateway;
@@ -119,10 +121,28 @@ describe("RealtimeGateway", () => {
   it("emitToSucursal emits to the sucursal room", () => {
     const server = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
     gateway.server = server as never;
+    const order: RealtimeServerPayload<"pedido.actualizado"> = {
+      id: "00000000-0000-0000-0000-000000000021",
+      ...{ orgId: "00000000-0000-0000-0000-000000000011", sucursalId: "00000000-0000-0000-0000-000000000012" },
+      tipoServicio: "barra", mesaId: null, plataforma: null, direccionEnvio: null, estado: "abierto", version: 0,
+      cobro: null, items: [], createdAt: new Date(), updatedAt: new Date(), clientRequestId: null,
+    };
 
-    gateway.emitToSucursal("sucursal-1", "pedido.actualizado", { id: "pedido-1" });
+    gateway.emitToSucursal("sucursal-1", "pedido.actualizado", order);
 
     expect(server.to).toHaveBeenCalledWith("sucursal:sucursal-1");
-    expect(server.emit).toHaveBeenCalledWith("pedido.actualizado", { id: "pedido-1" });
+    expect(server.emit).toHaveBeenCalledWith("pedido.actualizado", order);
+  });
+
+  it("contains synchronous transport failures so committed writes remain successful", () => {
+    const server = { to: jest.fn().mockImplementation(() => { throw new Error("redis down"); }), emit: jest.fn() };
+    const log = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    gateway.server = server as never;
+
+    expect(() => gateway.emitToSucursal("sucursal-1", "caja.actualizada", {
+      orgId: "00000000-0000-0000-0000-000000000011", sucursalId: "00000000-0000-0000-0000-000000000012", turnoId: null,
+    })).not.toThrow();
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 });

@@ -37,7 +37,7 @@ async function setup(initialState: "abierto" | "entregado" = "entregado") {
   };
   const provider = { obtenerPago: jest.fn().mockResolvedValue(valid), buscarPreferencias: jest.fn(), crearPreferencia: jest.fn() };
   const realtime = { emitToSucursal: jest.fn() };
-  const caja = new CajaService(f.prisma);
+  const caja = new CajaService(f.prisma, realtime as never);
   const pedidos = new PedidosService(f.prisma, new MesasService(f.prisma, realtime as never), caja, realtime as never);
   const pagos = new PagosService(f.prisma, provider as unknown as MercadoPagoClient,
     new CobrosService(f.prisma, caja, realtime as never), realtime as never);
@@ -79,6 +79,14 @@ describe("payment identity reconciliation with PostgreSQL", () => {
       const receipt = await ctx.f.prisma.cobro.findUniqueOrThrow({ where: { pedidoId: ctx.pedido.id } });
       expect(receipt).toMatchObject({ monto: 1000, metodo: "mercadopago", turnoCajaId: null, cobradoEn: ctx.valid.approvedAt });
       expect((await ctx.f.prisma.pedido.findUniqueOrThrow({ where: { id: ctx.pedido.id } })).estado).toBe("abierto");
+      expect(ctx.realtime.emitToSucursal).toHaveBeenCalledWith(ctx.f.tenant.sucursalId, "pedido.actualizado", expect.objectContaining({
+        id: ctx.pedido.id,
+        cobro: expect.objectContaining({ id: receipt.id, metodo: "mercadopago" }),
+      }));
+      expect(ctx.realtime.emitToSucursal).toHaveBeenCalledWith(ctx.f.tenant.sucursalId, "caja.actualizada", {
+        ...ctx.f.tenant,
+        turnoId: null,
+      });
 
       for (const [version, estado] of ["enviado_a_cocina", "en_preparacion", "listo", "entregado"].entries()) {
         await ctx.pedidos.updateEstado(ctx.pedido.id, { estado: estado as "enviado_a_cocina" | "en_preparacion" | "listo" | "entregado", expectedVersion: version }, ctx.f.tenant, ctx.f.actor);
@@ -167,6 +175,14 @@ describe("payment identity reconciliation with PostgreSQL", () => {
       await ctx.pagos.procesarWebhook(paymentId);
       const receipt = await ctx.f.prisma.cobro.findUniqueOrThrow({ where: { pedidoId: ctx.pedido.id } });
       expect(receipt.metodo).toBe("efectivo");
+      expect(ctx.realtime.emitToSucursal).toHaveBeenCalledWith(ctx.f.tenant.sucursalId, "pedido.actualizado", expect.objectContaining({
+        id: ctx.pedido.id,
+        cobro: expect.objectContaining({ id: receipt.id, metodo: "efectivo" }),
+      }));
+      expect(ctx.realtime.emitToSucursal).toHaveBeenCalledWith(ctx.f.tenant.sucursalId, "caja.actualizada", {
+        ...ctx.f.tenant,
+        turnoId: receipt.turnoCajaId,
+      });
       expect((await ctx.f.prisma.pago.findUniqueOrThrow({ where: { id: ctx.pago.id } })).estado).toBe("incidente");
     } finally { await ctx.f.dispose(); }
   });
@@ -178,7 +194,7 @@ describe("payment identity reconciliation with PostgreSQL", () => {
     try {
       const pedido = await f.prisma.pedido.create({ data: { ...f.tenant, tipoServicio: "barra", items: { create: [{ platoId: f.platoId, nombre: "Test dish", precioUnitario: 1000, cantidad: 1 }] } }, include: { items: true } });
       const realtime = { emitToSucursal: jest.fn() };
-      const caja = new CajaService(f.prisma);
+      const caja = new CajaService(f.prisma, realtime as never);
       const provider = {
         crearPreferencia: jest.fn(async (input: { externalReference: string }) => ({
           preferenceId: "pref-1", initPoint: "https://mp.example/checkout", externalReference: input.externalReference,
@@ -211,7 +227,7 @@ describe("payment identity reconciliation with PostgreSQL", () => {
       const pedido = await f.prisma.pedido.create({ data: { ...f.tenant, tipoServicio: "barra", items: { create: [{ platoId: f.platoId, nombre: "Test dish", precioUnitario: 1000, cantidad: 1 }] } } });
       const provider = { crearPreferencia: jest.fn(async (input: { externalReference: string }) => resultFor(input.externalReference)), obtenerPago: jest.fn(), buscarPreferencias: jest.fn() };
       const realtime = { emitToSucursal: jest.fn() };
-      const caja = new CajaService(f.prisma);
+      const caja = new CajaService(f.prisma, realtime as never);
       const service = new PagosService(f.prisma, provider as unknown as MercadoPagoClient,
         new CobrosService(f.prisma, caja, realtime as never), realtime as never);
       await expect(service.crearPreferencia(pedido.id, f.tenant, f.actor)).rejects.toMatchObject({ status: 409 });
@@ -241,7 +257,7 @@ describe("payment identity reconciliation with PostgreSQL", () => {
         obtenerPago: jest.fn(), buscarPreferencias: jest.fn(),
       };
       const realtime = { emitToSucursal: jest.fn() };
-      const caja = new CajaService(f.prisma);
+      const caja = new CajaService(f.prisma, realtime as never);
       const service = new PagosService(f.prisma, provider as unknown as MercadoPagoClient,
         new CobrosService(f.prisma, caja, realtime as never), realtime as never);
       const first = service.crearPreferencia(pedido.id, f.tenant, f.actor);
@@ -268,7 +284,7 @@ describe("payment identity reconciliation with PostgreSQL", () => {
         })), obtenerPago: jest.fn(), buscarPreferencias: jest.fn(),
       };
       const realtime = { emitToSucursal: jest.fn() };
-      const caja = new CajaService(f.prisma);
+      const caja = new CajaService(f.prisma, realtime as never);
       const service = new PagosService(f.prisma, provider as unknown as MercadoPagoClient,
         new CobrosService(f.prisma, caja, realtime as never), realtime as never);
       await expect(service.crearPreferencia(pedido.id, f.tenant, f.actor)).rejects.toMatchObject({ status: 400 });
@@ -293,7 +309,7 @@ describe("payment identity reconciliation with PostgreSQL", () => {
       await f.prisma.pago.create({ data: { ...f.tenant, id: attemptId, pedidoId: pedido.id, externalReference: attemptId, monto: 1000,
         merchantId: MERCHANT, estado: "creando", leaseUntil: new Date(Date.now() - 1000) } });
       const realtime = { emitToSucursal: jest.fn() };
-      const caja = new CajaService(f.prisma);
+      const caja = new CajaService(f.prisma, realtime as never);
       const provider = { buscarPreferencias: jest.fn().mockResolvedValue([]), crearPreferencia: jest.fn(), obtenerPago: jest.fn() };
       const service = new PagosService(f.prisma, provider as unknown as MercadoPagoClient,
         new CobrosService(f.prisma, caja, realtime as never), realtime as never);
@@ -314,7 +330,7 @@ describe("payment identity reconciliation with PostgreSQL", () => {
       await f.prisma.pago.create({ data: { ...f.tenant, id: attemptId, pedidoId: pedido.id, externalReference: attemptId, monto: 1000,
         merchantId: MERCHANT, estado: "creando", leaseUntil: new Date(Date.now() - 1000) } });
       const realtime = { emitToSucursal: jest.fn() };
-      const caja = new CajaService(f.prisma);
+      const caja = new CajaService(f.prisma, realtime as never);
       const provider = { buscarPreferencias: jest.fn().mockResolvedValue([{
         preferenceId: "recovered-pref", initPoint: "https://mp.example/recovered", externalReference: attemptId,
         merchantId: MERCHANT, monto: 1000, currency: "ARS",

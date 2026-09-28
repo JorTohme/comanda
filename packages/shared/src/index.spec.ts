@@ -27,6 +27,7 @@ import {
   siguienteEstadoPedido,
   updateDisponibilidadPlato,
   updateEstadoMesa,
+  realtimeEventSchemas,
 } from "./index";
 
 describe("centavosToPesos", () => {
@@ -734,5 +735,30 @@ describe("role-specific update endpoints", () => {
       `http://api.test/platos/${plato.id}/disponibilidad`,
       `http://api.test/mesas/${mesa.id}/estado`,
     ]);
+  });
+});
+
+describe("realtime payload schemas", () => {
+  const tenant = {
+    orgId: "00000000-0000-0000-0000-000000000011",
+    sucursalId: "00000000-0000-0000-0000-000000000012",
+  };
+  const timestamp = "2026-09-27T00:00:00.000Z";
+
+  it("validates entity create/update payloads with their canonical schemas", () => {
+    const categoria = { ...tenant, id: "00000000-0000-0000-0000-000000000013", nombre: "Bebidas", createdAt: timestamp, updatedAt: timestamp };
+    expect(realtimeEventSchemas["categoria.creada"].safeParse(categoria).success).toBe(true);
+    expect(realtimeEventSchemas["categoria.actualizada"].safeParse({ ...categoria, id: "bad" }).success).toBe(false);
+  });
+
+  it("requires tenant-scoped UUID envelopes for delete events", () => {
+    const deleted = { ...tenant, id: "00000000-0000-0000-0000-000000000013" };
+    expect(realtimeEventSchemas["plato.eliminado"].safeParse(deleted).success).toBe(true);
+    expect(realtimeEventSchemas["mesa.eliminada"].safeParse({ ...deleted, sucursalId: "bad" }).success).toBe(false);
+  });
+
+  it("treats caja events as tenant/turno invalidations, not totals", () => {
+    expect(realtimeEventSchemas["caja.actualizada"].safeParse({ ...tenant, turnoId: null }).success).toBe(true);
+    expect(realtimeEventSchemas["caja.actualizada"].safeParse({ ...tenant, turnoId: "not-a-uuid", total: 999 }).success).toBe(false);
   });
 });

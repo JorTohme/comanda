@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Persistence and HTTP contract for `Categoria` and `Plato`: CRUD, availability, price-in-cents, and validation. Out of scope: authentication/authorization, tenancy filtering by `org_id`/`sucursal_id` (columns exist but unused), real-time/socket propagation, takeaway/delivery, payments, floor plan.
+Persistence and HTTP contract for tenant-scoped `Categoria` and `Plato`: CRUD, availability, price-in-cents, validation, and post-commit realtime snapshots/delete envelopes. Out of scope: takeaway/delivery, payments, floor plan.
 
 ## ADDED Requirements
 
@@ -149,3 +149,13 @@ The system MUST represent `precio` as an integer number of centavos in persisten
 - GIVEN a request body with `precio: 15.5`
 - WHEN `POST /platos` or `PATCH /platos/:id` is called
 - THEN the system MUST respond 400
+
+### Requirement: Publish committed catalog CRUD events
+
+The system MUST publish `categoria.creada` and `categoria.actualizada` with the canonical Categoria snapshot after successful writes, and `categoria.eliminada` with `{ id, orgId, sucursalId }` after deletion. The equivalent Plato events MUST be `plato.creado`, `plato.actualizado`, and `plato.eliminado`. No event is emitted if persistence fails; publication failure after commit is logged and MUST NOT fail the HTTP mutation.
+
+#### Scenario: Catalog CRUD events follow committed writes
+
+- GIVEN a tenant-scoped catalog entity is created, updated, or deleted successfully
+- WHEN the database mutation commits
+- THEN the corresponding branch-scoped event MUST be emitted with the shared entity schema or deletion envelope

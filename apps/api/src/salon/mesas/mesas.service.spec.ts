@@ -54,7 +54,7 @@ describe("MesasService", () => {
       data: { nombre: "Mesa 1", capacidad: 4, estado: "libre", ...TENANT },
     });
     expect(result.estado).toBe("libre");
-    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", created);
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.creada", { ...created, forma: null });
   });
 
   it("creates a mesa honoring an explicit estado", async () => {
@@ -97,6 +97,26 @@ describe("MesasService", () => {
     expect(result).toEqual(updated);
   });
 
+  it("publishes a mesa creation only after commit", async () => {
+    const timeline: string[] = [];
+    const created = {
+      id: "00000000-0000-0000-0000-000000000041", nombre: "Mesa 1", capacidad: 4, estado: "libre",
+      ...TENANT, createdAt: new Date(), updatedAt: new Date(),
+    };
+    prisma.mesa.create.mockResolvedValue(created);
+    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) => {
+      const result = await callback(prisma);
+      timeline.push("commit");
+      return result;
+    });
+    realtime.emitToSucursal.mockImplementation(() => timeline.push("event"));
+
+    await service.create({ nombre: "Mesa 1", capacidad: 4 }, TENANT);
+
+    expect(timeline).toEqual(["commit", "event"]);
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.creada", { ...created, forma: null });
+  });
+
   it("cannot free a table with a nonclosed pedido", async () => {
     prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
     prisma.pedido.findFirst.mockResolvedValue({ id: "pedido-1" });
@@ -123,7 +143,7 @@ describe("MesasService", () => {
         data: { estado },
       });
       expect(result.estado).toBe(estado);
-      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", updated);
+      expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.actualizada", { ...updated, forma: null });
     },
   );
 
@@ -157,6 +177,24 @@ describe("MesasService", () => {
     prisma.mesa.findFirst.mockResolvedValue({ id: "mesa-1" });
 
     await expect(service.remove("mesa-1", TENANT)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("publishes a tenant-scoped delete envelope after removing a mesa", async () => {
+    const id = "00000000-0000-0000-0000-000000000041";
+    prisma.mesa.findFirst.mockResolvedValue({ id });
+    prisma.mesa.delete.mockResolvedValue({ id, ...TENANT });
+
+    await service.remove(id, TENANT);
+
+    expect(realtime.emitToSucursal).toHaveBeenCalledWith(TENANT.sucursalId, "mesa.eliminada", { id, ...TENANT });
+  });
+
+  it("does not publish a mesa if its transaction rejects", async () => {
+    prisma.$transaction.mockRejectedValue(new Error("commit failed"));
+
+    await expect(service.update("mesa-1", { estado: "ocupada" }, TENANT)).rejects.toThrow("commit failed");
+
+    expect(realtime.emitToSucursal).not.toHaveBeenCalled();
   });
 
   it("assertMesaExists resolves silently when the mesa exists", async () => {

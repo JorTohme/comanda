@@ -1,6 +1,7 @@
-import { Inject } from "@nestjs/common";
+import { Inject, Logger } from "@nestjs/common";
 import { OnGatewayConnection, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
 import type { Server, Socket } from "socket.io";
+import type { RealtimeEventName, RealtimeServerPayload } from "@comanda/shared";
 import { JwtService } from "../auth/jwt.service";
 
 function sala(sucursalId: string): string {
@@ -10,6 +11,7 @@ function sala(sucursalId: string): string {
 @WebSocketGateway({ cors: { origin: "*" } })
 export class RealtimeGateway implements OnGatewayConnection {
   @WebSocketServer() server!: Server;
+  private readonly logger = new Logger(RealtimeGateway.name);
 
   constructor(@Inject(JwtService) private readonly jwt: JwtService) {}
 
@@ -33,7 +35,11 @@ export class RealtimeGateway implements OnGatewayConnection {
     }
   }
 
-  emitToSucursal(sucursalId: string, evento: string, payload: unknown): void {
-    this.server.to(sala(sucursalId)).emit(evento, payload);
+  emitToSucursal<TEvent extends RealtimeEventName>(sucursalId: string, evento: TEvent, payload: RealtimeServerPayload<TEvent>): void {
+    try {
+      this.server?.to(sala(sucursalId)).emit(evento, payload);
+    } catch (error) {
+      this.logger.error(`Failed to publish ${evento} to sucursal ${sucursalId}`, error instanceof Error ? error.stack : undefined);
+    }
   }
 }
