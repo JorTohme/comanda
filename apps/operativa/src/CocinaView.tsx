@@ -54,10 +54,14 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);
 
-  async function handleAvanzar(pedidoId: string, estado: "en_preparacion" | "listo") {
+  async function handleAvanzar(pedido: Pedido, estado: "en_preparacion" | "listo") {
+    if (pedido.id === pedido.clientRequestId || !Number.isInteger(pedido.version)) {
+      setError("El pedido todavía no está sincronizado. Esperá a que se confirme antes de avanzar su estado.");
+      return;
+    }
     setError(null);
     try {
-      const actualizado = await avanzarEstadoPedido(API_URL, pedidoId, estado);
+      const actualizado = await avanzarEstadoPedido(API_URL, pedido.id, estado, pedido.version);
       const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.pedidos.upsert(actualizado);
     } catch (err) {
@@ -114,9 +118,9 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
               {nuevos.map((pedido) => (
                 <div key={pedido.id} className="ticket col-nuevos">
                   <PedidoResumen pedido={pedido} />
-                  <button type="button" className="btn btn-block" style={{ background: "var(--state-cocina)", color: "var(--state-cocina-ink)", marginTop: 8 }} onClick={() => handleAvanzar(pedido.id, "en_preparacion")}>
+                  {pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-block" style={{ background: "var(--state-cocina)", color: "var(--state-cocina-ink)", marginTop: 8 }} onClick={() => handleAvanzar(pedido, "en_preparacion")}>
                     Empezar
-                  </button>
+                  </button>}
                 </div>
               ))}
             </div>
@@ -129,9 +133,9 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
               {enPreparacion.map((pedido) => (
                 <div key={pedido.id} className="ticket col-preparacion">
                   <PedidoResumen pedido={pedido} />
-                  <button type="button" className="btn btn-sage btn-block" style={{ marginTop: 8 }} onClick={() => handleAvanzar(pedido.id, "listo")}>
+                  {pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-sage btn-block" style={{ marginTop: 8 }} onClick={() => handleAvanzar(pedido, "listo")}>
                     Marcar listo
-                  </button>
+                  </button>}
                 </div>
               ))}
             </div>

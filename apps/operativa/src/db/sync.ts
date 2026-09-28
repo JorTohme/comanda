@@ -21,6 +21,8 @@ function pedidoOptimista(
     plataforma: input.plataforma ?? null,
     direccionEnvio: input.direccionEnvio ?? null,
     estado: "abierto",
+    version: 0,
+    cobro: null,
     clientRequestId,
     items: input.items.map((item, index) => {
       const plato = platoById.get(item.platoId);

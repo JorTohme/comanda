@@ -11,6 +11,12 @@ const allowed: Partial<Record<EstadoPedido, RolUsuario[]>> = {
   cerrado: ["admin", "caja"],
 };
 
+export function assertPedidoCreateAllowed(rol: RolUsuario): void {
+  if (!(["admin", "caja", "mozo"] as RolUsuario[]).includes(rol)) {
+    throw new ForbiddenException("Action not allowed");
+  }
+}
+
 export function assertPedidoActionAllowed(rol: RolUsuario, destino: EstadoPedido): void {
   if (!allowed[destino]?.includes(rol)) throw new ForbiddenException("Action not allowed");
 }

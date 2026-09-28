@@ -29,13 +29,13 @@ describe("pedido service actor boundary", () => {
   });
 
   it("rejects cocina delivery even when called without an HTTP guard", async () => {
-    await expect(service.updateEstado("pedido-1", "entregado", tenant, actor)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.updateEstado("pedido-1", { estado: "entregado", expectedVersion: 0 }, tenant, actor)).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.pedido.update).not.toHaveBeenCalled();
   });
 
   it("rejects generic cash collection even for caja", async () => {
     prisma.pedido.findFirst.mockResolvedValue({ id: "pedido-1", estado: "entregado", tipoServicio: "barra" });
-    await expect(service.updateEstado("pedido-1", "cobrado", tenant, { ...actor, rol: "caja" })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateEstado("pedido-1", { estado: "cobrado", expectedVersion: 0 }, tenant, { ...actor, rol: "caja" })).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.pedido.update).not.toHaveBeenCalled();
   });
 });

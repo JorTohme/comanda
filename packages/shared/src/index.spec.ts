@@ -3,6 +3,9 @@ jest.mock("socket.io-client", () => ({ io: (...args: unknown[]) => mockIo(...arg
 
 import {
   categoriaSchema,
+  pedidoSchema,
+  turnoCajaDetalleSchema,
+  avanzarEstadoPedido,
   centavosToPesos,
   clearSession,
   createCategoria,
@@ -367,6 +370,115 @@ describe("client action policy", () => {
     expect(canActOnPedido("mozo", "entregado")).toBe(true);
     expect(canActOnPedido("mozo", "cerrado")).toBe(false);
     expect(canActOnPedido("caja", "cerrado")).toBe(true);
+  });
+});
+
+describe("versioned Pedido contract", () => {
+  it("parses Pedido version and nullable Cobro receipt", () => {
+    const pedido = pedidoSchema.parse({
+      id: "00000000-0000-0000-0000-000000000001",
+      orgId: "00000000-0000-0000-0000-000000000002",
+      sucursalId: "00000000-0000-0000-0000-000000000003",
+      tipoServicio: "barra",
+      mesaId: null,
+      plataforma: null,
+      direccionEnvio: null,
+      estado: "abierto",
+      version: 3,
+      cobro: null,
+      items: [],
+      createdAt: "2026-09-27T00:00:00.000Z",
+      updatedAt: "2026-09-27T00:00:00.000Z",
+    });
+
+    expect(pedido.version).toBe(3);
+    expect(pedido.cobro).toBeNull();
+  });
+
+  it("rejects missing or invalid version and Cobro fields on primary Pedido responses", () => {
+    const required = {
+      id: "00000000-0000-0000-0000-000000000001",
+      orgId: "00000000-0000-0000-0000-000000000002",
+      sucursalId: "00000000-0000-0000-0000-000000000003",
+      tipoServicio: "barra",
+      mesaId: null,
+      plataforma: null,
+      direccionEnvio: null,
+      estado: "abierto",
+      items: [],
+      createdAt: "2026-09-27T00:00:00.000Z",
+      updatedAt: "2026-09-27T00:00:00.000Z",
+    };
+
+    expect(pedidoSchema.safeParse({ ...required, cobro: null }).success).toBe(false);
+    expect(pedidoSchema.safeParse({ ...required, version: -1, cobro: null }).success).toBe(false);
+    expect(pedidoSchema.safeParse({ ...required, version: 0, cobro: {} }).success).toBe(false);
+  });
+
+  it("keeps legacy caja order summaries separate from the primary Pedido contract", () => {
+    const pedidoSummary = {
+      id: "00000000-0000-0000-0000-000000000001",
+      orgId: "00000000-0000-0000-0000-000000000002",
+      sucursalId: "00000000-0000-0000-0000-000000000003",
+      tipoServicio: "barra",
+      mesaId: null,
+      plataforma: null,
+      direccionEnvio: null,
+      estado: "abierto",
+      items: [],
+      createdAt: "2026-09-27T00:00:00.000Z",
+      updatedAt: "2026-09-27T00:00:00.000Z",
+    };
+    const detail = turnoCajaDetalleSchema.parse({
+      id: "00000000-0000-0000-0000-000000000004",
+      orgId: "00000000-0000-0000-0000-000000000002",
+      sucursalId: "00000000-0000-0000-0000-000000000003",
+      estado: "abierto",
+      montoInicial: 0,
+      abiertoPorId: "00000000-0000-0000-0000-000000000005",
+      abiertoEn: "2026-09-27T00:00:00.000Z",
+      cerradoPorId: null,
+      cerradoEn: null,
+      montoDeclarado: null,
+      totalCalculado: 0,
+      diferencia: null,
+      createdAt: "2026-09-27T00:00:00.000Z",
+      updatedAt: "2026-09-27T00:00:00.000Z",
+      movimientos: [],
+      pedidos: [pedidoSummary],
+    });
+
+    expect(detail.pedidos).toHaveLength(1);
+  });
+
+  it("sends expectedVersion with a state transition", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, {
+      id: "00000000-0000-0000-0000-000000000001",
+      orgId: "00000000-0000-0000-0000-000000000002",
+      sucursalId: "00000000-0000-0000-0000-000000000003",
+      tipoServicio: "barra",
+      mesaId: null,
+      plataforma: null,
+      direccionEnvio: null,
+      estado: "enviado_a_cocina",
+      version: 4,
+      cobro: null,
+      items: [],
+      createdAt: "2026-09-27T00:00:00.000Z",
+      updatedAt: "2026-09-27T00:00:01.000Z",
+    }));
+    const originalFetch = global.fetch;
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      await avanzarEstadoPedido("http://api.test", "00000000-0000-0000-0000-000000000001", "enviado_a_cocina", 3);
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({
+        estado: "enviado_a_cocina",
+        expectedVersion: 3,
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });
 

@@ -133,10 +133,14 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
     }
   }
 
-  async function handleAvanzar(pedidoId: string, estado: "enviado_a_cocina" | "entregado") {
+  async function handleAvanzar(pedido: Pedido, estado: "enviado_a_cocina" | "entregado") {
+    if (pedido.id === pedido.clientRequestId || !Number.isInteger(pedido.version)) {
+      setError("El pedido todavía no está sincronizado. Esperá a que se confirme antes de avanzar su estado.");
+      return;
+    }
     setError(null);
     try {
-      const actualizado = await avanzarEstadoPedido(API_URL, pedidoId, estado);
+      const actualizado = await avanzarEstadoPedido(API_URL, pedido.id, estado, pedido.version);
       const db = await getDb(session.user.orgId, session.user.sucursalId);
       await db.collections.pedidos.upsert(actualizado);
     } catch (err) {
@@ -276,16 +280,12 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
                 <div className="items">
                   {pedido.items.map((item) => `${item.cantidad}× ${item.nombre}`).join(" · ")}
                 </div>
-                {pedido.estado === "abierto" && (
-                  <button type="button" className="btn btn-primary btn-block" onClick={() => handleAvanzar(pedido.id, "enviado_a_cocina")}>
+                {pedido.estado === "abierto" && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-primary btn-block" onClick={() => handleAvanzar(pedido, "enviado_a_cocina")}>
                     Enviar a cocina
-                  </button>
-                )}
-                {pedido.estado === "listo" && (
-                  <button type="button" className="btn btn-sage btn-block" onClick={() => handleAvanzar(pedido.id, "entregado")}>
+                  </button>}
+                {pedido.estado === "listo" && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && <button type="button" className="btn btn-sage btn-block" onClick={() => handleAvanzar(pedido, "entregado")}>
                     Marcar entregado
-                  </button>
-                )}
+                  </button>}
               </div>
             ))}
           </section>

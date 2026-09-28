@@ -23,6 +23,8 @@ describe("PlatosService", () => {
     categoria: {
       findFirst: jest.fn(),
     },
+    $queryRaw: jest.fn(),
+    $transaction: jest.fn(),
   };
   const realtime = {
     emitToSucursal: jest.fn(),
@@ -30,6 +32,8 @@ describe("PlatosService", () => {
 
   beforeEach(async () => {
     jest.resetAllMocks();
+    prisma.$queryRaw.mockResolvedValue([{ id: TENANT.sucursalId }]);
+    prisma.$transaction.mockImplementation(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
     const moduleRef = await Test.createTestingModule({
       providers: [
         PlatosService,

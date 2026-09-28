@@ -151,11 +151,15 @@ export default function PedidosPage() {
   }
 
   async function handleAvanzar(pedido: Pedido) {
+    if (pedido.id === pedido.clientRequestId || !Number.isInteger(pedido.version)) {
+      setError("El pedido todavía no está sincronizado. Actualizá la lista antes de avanzar su estado.");
+      return;
+    }
     const siguiente = siguienteEstadoPedido(pedido);
     if (!siguiente || !rol || !canActOnPedido(rol, siguiente)) return;
     setError(null);
     try {
-      const actualizado = await avanzarEstadoPedido(API_URL, pedido.id, siguiente);
+      const actualizado = await avanzarEstadoPedido(API_URL, pedido.id, siguiente, pedido.version);
       setPedidos(pedidos.map((p) => (p.id === actualizado.id ? actualizado : p)));
     } catch (err) {
       setError(mensajeDeError(err));
@@ -307,7 +311,7 @@ export default function PedidosPage() {
                   ))}
                 </ul>
                 <p className="mt-2 font-medium text-ink">Total: {centavosToPesos(totalPedido(pedido))}</p>
-                {siguiente && rol && canActOnPedido(rol, siguiente) && (
+                {siguiente && rol && canActOnPedido(rol, siguiente) && pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version) && (
                   <Button size="sm" className="mt-3" onClick={() => handleAvanzar(pedido)}>
                     Avanzar a {LABEL_ESTADO_PEDIDO[siguiente]}
                   </Button>

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Persistence and HTTP contract for `Pedido`/`ItemPedido`: creation with price/name snapshotting, linear state-machine transitions (`EstadoPedido`), `tipoServicio` (`mesa`/`barra`) validation, and FK guards. Out of scope: takeaway/delivery service types, Socket.io/real-time push, real caja/pagos driving `cobrado`, `apps/operativa`, auth/tenancy enforcement.
+Persistence and HTTP contract for tenant-scoped orders: validated creation with price/name snapshots and idempotency, serialized Mesa/catalog mutations, optimistic state transitions, receipt-aware closure, and post-commit realtime notifications. Service actor authorization and tenant isolation are enforced at the API boundary as well as by HTTP guards.
 
 ## Requirements
 
@@ -128,6 +128,82 @@ The system MUST list all Pedidos with their items and current `estado`, and MUST
 - GIVEN no Pedido exists with id Y
 - WHEN a client sends `GET /pedidos/Y`
 - THEN the system MUST respond 404
+
+### Requirement: Idempotent creation preserves the original order snapshot
+
+The system MUST serialize order mutations on the tenant's Sucursal row. A supplied `clientRequestId` is scoped by organization and branch, and a canonical fingerprint of normalized service/destination/items MUST match before replay returns the original order. Historical keys without a fingerprint MUST conflict rather than be guessed. Creation MUST snapshot currently available tenant-owned dishes and their current names/prices in the same transaction as Pedido and Mesa writes. Dish quantities MUST be integers from 1 through 999, at most 100 input lines are accepted, combined quantity per dish MUST NOT exceed 999, and the computed order total MUST be positive and within the supported integer range. A table MUST NOT have two active orders.
+
+#### Scenario: Equivalent retry returns original snapshot
+
+- GIVEN a Pedido created with a `clientRequestId` and dish snapshot
+- WHEN the same normalized payload is retried in the same organization and branch
+- THEN the API MUST return the original Pedido and item snapshots without another write or event
+
+#### Scenario: Conflicting or historical key is rejected
+
+- GIVEN the key belongs to a different payload, or the historical Pedido has no fingerprint
+- WHEN the key is reused
+- THEN the API MUST return 409 and MUST NOT overwrite or infer the existing request
+
+#### Scenario: Concurrent table orders are serialized
+
+- GIVEN no active Pedido exists for a Mesa
+- WHEN concurrent create requests use different idempotency keys for that Mesa
+- THEN at most one transaction MUST create an active Pedido
+
+#### Scenario: Unavailable/foreign dish or invalid total is rejected
+
+- GIVEN a dish is unavailable or does not belong to the current tenant, or the total is invalid
+- WHEN a Pedido is created
+- THEN the API MUST reject the request without persisting the Pedido, item snapshots, or Mesa state
+
+### Requirement: Actor and tenant boundaries apply to service calls
+
+The service MUST independently require the actor to belong to the supplied organization and branch. Only admin, caja, and mozo actors may create orders; transition actions MUST follow the role/action policy. Generic browser state mutation MUST NOT set `cobrado`; cash collection is an explicit receipt operation.
+
+#### Scenario: Unauthorized actor or mismatched tenant is rejected
+
+- GIVEN the actor lacks permission for create/action or belongs to another organization/branch
+- WHEN the service is invoked directly
+- THEN it MUST reject before persisting a change
+
+### Requirement: State transitions use optimistic concurrency and receipt evidence
+
+Every transition request MUST include a non-negative `expectedVersion`. The service MUST validate tenant ownership, compare that version, validate the legal next state and actor action, and atomically update using ID, organization, branch, and expected version while incrementing version. A stale version MUST return 409. An order MUST NOT close unless a `Cobro` with a proven `cobradoEn` timestamp exists. Reaching `entregado` when a live receipt already exists MUST result in `cobrado`. Every API order representation MUST include `items`, current `version`, and `cobro`.
+
+#### Scenario: Stale transition loses compare-and-swap
+
+- GIVEN two clients read the same Pedido version
+- WHEN both submit a transition using that version
+- THEN only one may commit and the other MUST receive 409
+
+#### Scenario: Close requires proven receipt
+
+- GIVEN an order has no receipt timestamp
+- WHEN close is requested
+- THEN the API MUST reject it and preserve the order and Mesa state
+
+#### Scenario: Live receipt updates delivery state
+
+- GIVEN an order has a proven receipt timestamp
+- WHEN it reaches `entregado`
+- THEN its persisted state MUST be `cobrado`, with Cobro returned in the response
+
+### Requirement: Critical mutations and notifications are atomic and ordered
+
+Pedido create/transition, Mesa writes that can conflict with active orders, and Plato create/update/delete mutations that affect order creation MUST acquire the tenant's Sucursal lock before reading dependent state and persist all related changes in one transaction. Realtime notifications MUST be published only after commit; a notification failure MUST be logged and MUST NOT convert a committed mutation into an API failure.
+
+#### Scenario: Database failure rolls back coupled writes
+
+- GIVEN a Pedido transition or creation requires a Mesa change
+- WHEN either write fails
+- THEN neither write MUST commit
+
+#### Scenario: Notification failure does not undo a committed mutation
+
+- GIVEN the database transaction commits
+- WHEN the realtime publisher throws
+- THEN the API MUST return the committed result and log the publication failure
 ### Requirement: Create Pedido is idempotent via clientRequestId
 
 The system MUST accept an optional `clientRequestId` on `POST /pedidos`. When a `Pedido` already exists for that `clientRequestId` within the same tenant, the system MUST return that existing `Pedido` (200/201, same shape as a fresh creation) instead of creating a new one, and MUST NOT trigger the `Mesa` side effect or re-emit the `pedido.actualizado`/`mesa.actualizada` realtime events for that replay.

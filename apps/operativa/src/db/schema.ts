@@ -4,6 +4,9 @@ import { RxDBDevModePlugin } from "rxdb/plugins/dev-mode";
 import { RxDBMigrationSchemaPlugin } from "rxdb/plugins/migration-schema";
 import type { Mesa, Plato, Pedido } from "@comanda/shared";
 
+// Existing RxDB v1 records predate server-managed version and receipt fields.
+export type PedidoOffline = Omit<Pedido, "version" | "cobro">;
+
 addRxPlugin(RxDBMigrationSchemaPlugin);
 if (import.meta.env.DEV) addRxPlugin(RxDBDevModePlugin);
 
@@ -54,7 +57,7 @@ const platoSchema: RxJsonSchema<Plato> = {
   required: ["id", "orgId", "sucursalId", "nombre", "precio", "disponible", "categoriaId"],
 } as RxJsonSchema<Plato>;
 
-const pedidoSchema: RxJsonSchema<Pedido> = {
+const pedidoSchema: RxJsonSchema<PedidoOffline> = {
   version: 1,
   primaryKey: "id",
   type: "object",
@@ -86,7 +89,7 @@ const pedidoSchema: RxJsonSchema<Pedido> = {
     updatedAt: { type: "string" },
   },
   required: ["id", "orgId", "sucursalId", "tipoServicio", "estado", "items"],
-} as RxJsonSchema<Pedido>;
+} as RxJsonSchema<PedidoOffline>;
 
 const outboxSchema: RxJsonSchema<OutboxEntry> = {
   version: 0,

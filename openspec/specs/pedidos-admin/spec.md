@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Admin screen behavior in `apps/web` (`/pedidos`) for creating Pedidos, adding items from the Plato catalog, advancing their `estado`, and listing them against the `pedidos` HTTP API. Out of scope: authentication/authorization, tenancy, real-time updates, mozo-facing UI in `apps/operativa`, payment/caja flows.
+Admin screen behavior in `apps/web` (`/pedidos`) for creating Pedidos, adding items from the Plato catalog, advancing their versioned `estado`, and listing the order/receipt contract from the `pedidos` HTTP API. Cash collection remains an explicit caja operation, not a generic state change.
 
 ## Requirements
 
@@ -47,6 +47,28 @@ The admin screen MUST allow advancing a Pedido's `estado` only to the next state
 - GIVEN a Pedido is displayed with `estado=abierto`
 - WHEN the admin views available actions
 - THEN the screen MUST NOT present an option to set `estado` to anything other than `enviado_a_cocina`
+
+### Requirement: State advance uses the displayed version and excludes cash collection
+
+Every state advance MUST submit the version currently displayed by the screen as `expectedVersion`. The admin order screen MUST NOT offer generic `cobrado`; stale-version conflicts MUST preserve the current server state and prompt the user to refresh/retry from current data. Order representations MUST retain `version` and `cobro` when loaded and after mutations.
+
+#### Scenario: Versioned transition
+
+- GIVEN a Pedido is displayed at version 4
+- WHEN the admin advances its state
+- THEN the screen MUST submit `expectedVersion: 4` and use the returned current Pedido on success
+
+#### Scenario: Stale version is not presented as a successful update
+
+- GIVEN another actor has already advanced the Pedido
+- WHEN the admin submits an outdated version and receives 409
+- THEN the screen MUST keep the server-confirmed state and show a refreshable conflict error
+
+#### Scenario: Cash collection is not a state action
+
+- GIVEN a Pedido is listed in the admin screen
+- WHEN available state actions are rendered
+- THEN `cobrado` MUST NOT be offered as a manual state transition
 
 ### Requirement: Surface API errors
 

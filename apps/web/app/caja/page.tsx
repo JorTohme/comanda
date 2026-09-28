@@ -32,7 +32,7 @@ const MOVIMIENTO_FORM_VACIO: { tipo: TipoMovimientoCaja; montoPesos: string; des
   descripcion: "",
 };
 
-function totalPedido(pedido: Pedido): number {
+function totalPedido(pedido: Pick<Pedido, "items">): number {
   return pedido.items.reduce((acc, item) => acc + item.precioUnitario * item.cantidad, 0);
 }
 
