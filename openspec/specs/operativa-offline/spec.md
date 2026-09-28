@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Offline-first data layer for `apps/operativa` (Mozo/Cocina): a local RxDB store that survives a dropped connection while the tab stays open, and an outbox that queues Pedido creation for the Mozo role until connectivity returns. This spec also records the shared browser-session contract used by both `operativa` and `web`; their business data remains scoped to each application. Out of scope: Service Worker / cold-reload-without-network and offline writes for anything other than Pedido creation.
+Offline-first data layer for `apps/operativa` (Mozo/Cocina): a local RxDB store that survives a dropped connection while the tab stays open, an outbox that queues Pedido creation for the Mozo role until connectivity returns, and a static-only Service Worker shell that supports cold navigation without a network. This spec also records the shared browser-session contract used by both `operativa` and `web`; their business data remains scoped to each application. Offline writes for anything other than Pedido creation remain out of scope.
 
 ## ADDED Requirements
 
@@ -120,7 +120,7 @@ Realtime receivers MUST validate every payload with the shared event schema and 
 - WHEN its version equals V
 - THEN the client MUST request an authoritative snapshot rather than assume its full state is current
 
-**Verification status:** Jest tests cover snapshot completeness, tenant and generation fences, pending projection preservation, event version rules, and dirty follow-up. Browser lifecycle, real IndexedDB, and multi-tab behavior remain pending Plan04.
+**Verification status:** Jest tests cover snapshot completeness, tenant and generation fences, pending projection preservation, event version rules, and dirty follow-up. `tests/browser/realtime.spec.ts` verifies that a newly submitted order reaches a live kitchen session. Multi-tab storage and explicit stale-row deletion remain unverified in the browser.
 
 ### Requirement: Creating a Pedido works offline
 
@@ -154,7 +154,7 @@ The system MUST persist a tenant-scoped outbox command before writing its optimi
 - WHEN the user exports legacy local data
 - THEN the system MUST download a read-only raw JSON snapshot and MUST leave the source database unchanged
 
-**Verification status:** Jest tests exercise write ordering, optimistic reconstruction, tenant-scoped counting, proof-gated migration, and raw quarantine using in-memory doubles. Browser IndexedDB persistence, migration behavior, cold reload, and multi-tab behavior remain pending Plan04 and are not claimed as verified here.
+**Verification status:** Jest tests exercise write ordering, optimistic reconstruction, tenant-scoped counting, proof-gated migration, and raw quarantine using in-memory doubles. `tests/browser/pwa.spec.ts` covers production-shell cold reload, retained IndexedDB queue state, reconnect, and one resulting server order. Legacy browser-database migration and cross-tab Web Locks remain unverified.
 
 ### Requirement: Queued Pedidos retry without losing commands
 
@@ -188,7 +188,7 @@ Startup, `online`, `focus`, visible-tab transitions, socket reconnects, and a fi
 - WHEN storing that Pedido or removing its optimistic projection fails
 - THEN the outbox command MUST remain so a later idempotent attempt can recover the authoritative row
 
-**Verification status:** Jest tests cover HTTP classification, timeout/abort, identity retention, tenant/generation cancellation, lock/singleflight coordination, local-write failure, and trigger cleanup. Real multi-tab Web Locks, browser IndexedDB, and end-to-end socket reconnection remain pending Plan04.
+**Verification status:** Jest tests cover HTTP classification, timeout/abort, identity retention, tenant/generation cancellation, lock/singleflight coordination, local-write failure, and trigger cleanup. `tests/browser/pwa.spec.ts` covers 503/429 retention, stable request identity, and successful retry; `tests/browser/realtime.spec.ts` covers a live kitchen event. Multi-tab Web Locks remain unverified.
 
 ### Requirement: Mozo can recover pending and failed Pedido commands
 
@@ -222,4 +222,4 @@ The Cocina view MUST display and advance only acknowledged server Pedidos. An op
 - WHEN the Cocina view renders or advances kitchen orders
 - THEN that Pedido MUST NOT be displayed, counted as a kitchen order, or sent to a state endpoint
 
-**Verification status:** Jest tests cover tenant-scoped retry/discard behavior, immutable identity, and protection of authoritative Pedido rows. DOM and interaction assertions remain pending Plan04 browser verification.
+**Verification status:** Jest tests cover tenant-scoped retry/discard behavior, immutable identity, and protection of authoritative Pedido rows. Browser interaction coverage is in `tests/browser/pwa.spec.ts`; actual execution requires the disposable PostgreSQL/Redis services in CI.

@@ -153,3 +153,9 @@ Cada conexión o reconexión Socket.io obtiene sus credenciales de la sesión vi
 La migración de tenancy crea `Organizacion`, `Sucursal` y `Usuario`; primero asigna los registros anteriores a una organización y sucursal iniciales deterministas, y luego vuelve obligatorias las columnas junto con sus foreign keys e índices. El paquete compartido valida el JSON de la API con Zod en el borde del cliente. Usá `ApiOptions` sólo desde clientes no-browser; las llamadas del navegador usan el token de la sesión iniciada.
 
 CI ejecuta lint, build y tests. No elimines la etapa de tests: el scoping por tenant es una frontera de corrección, no un detalle de UI.
+
+### Aceptación operativa y recuperación
+
+La suite de navegador se ejecuta con `corepack pnpm test:browser` sobre builds de producción: la consola se sirve en `:3000` y la PWA en `:5173` para que el Service Worker real controle la navegación. Playwright inicia la API con credenciales de proveedor ficticias y siempre usa PostgreSQL `comanda_test` en `:55432` y Redis en `:56379`; nunca debe apuntar a una base comercial ni abrir Mercado Pago. CI espera los health checks, aplica migraciones, corre los tests y habilita el seed únicamente con `NODE_ENV=development` y `ALLOW_DEMO_SEED=true` dentro de la base descartable.
+
+El Service Worker mantiene un shell estático versionado: no almacena respuestas de API, tokens ni comandos del outbox. La actualización requiere confirmación del usuario cuando no hay borradores ni pedidos locales pendientes; IndexedDB no se borra para actualizar la aplicación. Si un comando no se sincroniza, se conserva para reintento, descarte explícito o exportación de datos heredados. Una restauración operativa nunca debe resolver incertidumbre financiera borrando recibos `Cobro` ni reinterpretando fechas o medios históricos desconocidos.

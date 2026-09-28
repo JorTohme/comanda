@@ -11,6 +11,8 @@ Esta guía documenta el acceso por invitación y los límites de sesión que deb
 
 El enlace de activación es una credencial temporal: compartilo únicamente con su destinatario y no lo registres en logs, analítica ni almacenamiento persistente. Si la consola no llega a mostrar el enlace, la invitación no puede recuperarse desde la interfaz y habrá que crear otra.
 
+La aceptación de navegador crea invitaciones en una base `comanda_test` descartable, activa el enlace en `/invitacion` y verifica la autorización de la ruta `/equipo`. El test de fallback simula una falla del portapapeles y confirma que el enlace permanece visible para copiarlo manualmente; otro test libera una respuesta demorada después del cierre de sesión y comprueba que no se muestre al actor siguiente. Las trazas de Playwright se conservan solo cuando falla la ejecución y no deben publicarse con credenciales o datos reales.
+
 ## Sesiones y sucursales
 
 - La consola persiste la sesión del navegador en `localStorage` y envía el token de acceso como `Authorization: Bearer <token>`.
