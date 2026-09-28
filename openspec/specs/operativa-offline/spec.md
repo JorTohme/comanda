@@ -95,6 +95,30 @@ The system MUST allow a Mozo to create a Pedido (mesa or barra) while offline. T
 - WHEN the Mozo submits a new Pedido
 - THEN the system MUST insert it into the local store immediately and MUST NOT show an error, and MUST queue it in the outbox for later delivery
 
+### Requirement: Offline commands are durable before their local projection
+
+The system MUST persist a tenant-scoped outbox command before writing its optimistic Pedido projection. The command MUST retain the original request payload and client request ID, plus enough validated Pedido data to rebuild the projection. The local Pedido MUST use the current shared contract, including `version: 0` and `cobro: null`, and MUST NOT contain public payment-attempt history. Startup MUST validate and restore pending projections for the active organization and branch before fetching server data. It MUST NOT replace an acknowledged server Pedido with a pending projection that has the same `clientRequestId`.
+
+#### Scenario: The tab closes after saving a command but before the Pedido projection
+
+- GIVEN the durable command is present in the active branch outbox and its optimistic Pedido row is absent
+- WHEN the Mozo view starts again for the same organization and branch
+- THEN it MUST rebuild the optimistic Pedido from the stored command before fetching server data
+
+#### Scenario: Legacy outbox data cannot prove its branch
+
+- GIVEN an old outbox record is missing complete organization and branch proof, or its associated optimistic Pedido does not match both tenant IDs
+- WHEN the current schema migrates or startup examines that record
+- THEN it MUST preserve the original raw data in quarantine and MUST NOT assign the currently selected branch or delete the old store
+
+#### Scenario: Legacy data can be exported without destructive migration
+
+- GIVEN a supported browser exposes an old global or organization-keyed database, or the exact historical database name can be probed safely
+- WHEN the user exports legacy local data
+- THEN the system MUST download a read-only raw JSON snapshot and MUST leave the source database unchanged
+
+**Verification status:** Jest tests exercise write ordering, optimistic reconstruction, tenant-scoped counting, proof-gated migration, and raw quarantine using in-memory doubles. Browser IndexedDB persistence, migration behavior, cold reload, and multi-tab behavior remain pending Plan04 and are not claimed as verified here.
+
 ### Requirement: Queued Pedidos sync automatically on reconnect
 
 The system MUST attempt to deliver every queued Pedido to `POST /pedidos` when the browser regains connectivity, without requiring a manual retry or a page reload.

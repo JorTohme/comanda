@@ -19,7 +19,8 @@ import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
 import { getDb } from "./db/schema";
 import { useRxData } from "./db/useRxData";
-import { crearPedidoOffline, setupAutoSync } from "./db/sync";
+import { crearPedidoOffline, getPendingCommandCount, restorePendingOrders, setupAutoSync } from "./db/sync";
+import { exportLegacyDatabases, listLegacyDatabaseNames } from "./db/legacy-recovery";
 
 type ItemFormRow = { platoId: string; cantidad: string };
 
@@ -61,6 +62,8 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [form, setForm] = useState(FORM_VACIO);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [legacyAvailable, setLegacyAvailable] = useState(false);
 
   function cargarDatos() {
     return Promise.all([listMesas(API_URL), listPlatos(API_URL), listPedidos(API_URL)])
@@ -76,28 +79,52 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   }
 
   useEffect(() => {
-    cargarDatos().finally(() => setCargando(false));
-
-    const stopAutoSync = setupAutoSync(API_URL, { orgId: session.user.orgId, sucursalId: session.user.sucursalId }, (err) => setError(mensajeDeError(err)));
-    const socket = connectRealtime(API_URL);
-    socket.on("pedido.actualizado", async (pedido: Pedido) => {
-      const db = await getDb(session.user.orgId, session.user.sucursalId);
-      await db.collections.pedidos.upsert(pedido);
-    });
-    socket.on("mesa.actualizada", async (mesa: Mesa) => {
-      const db = await getDb(session.user.orgId, session.user.sucursalId);
-      await db.collections.mesas.upsert(mesa);
-    });
+    const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
+    let cancelled = false;
+    let stopAutoSync = () => {};
+    let socket: ReturnType<typeof connectRealtime> | null = null;
     const unsubscribe = subscribeSession(() => {
       const current = readSession();
       if (!current || current.user.id !== session.user.id || current.user.orgId !== session.user.orgId || current.user.sucursalId !== session.user.sucursalId) {
-        disconnectRealtime(socket);
+        cancelled = true;
+        if (socket) disconnectRealtime(socket);
         stopAutoSync();
       }
     });
+
+    void restorePendingOrders(tenant)
+      .then(async () => {
+        if (cancelled) return;
+        const [count, legacyNames] = await Promise.all([
+          getPendingCommandCount(tenant),
+          listLegacyDatabaseNames(tenant.orgId),
+        ]);
+        if (cancelled) return;
+        setPendingCount(count);
+        setLegacyAvailable(legacyNames.length > 0);
+        stopAutoSync = setupAutoSync(API_URL, tenant, (err) => setError(mensajeDeError(err)));
+        socket = connectRealtime(API_URL);
+        socket.on("pedido.actualizado", async (pedido: Pedido) => {
+          if (cancelled || pedido.orgId !== tenant.orgId || pedido.sucursalId !== tenant.sucursalId) return;
+          const db = await getDb(tenant.orgId, tenant.sucursalId);
+          await db.collections.pedidos.upsert(pedido);
+        });
+        socket.on("mesa.actualizada", async (mesa: Mesa) => {
+          if (cancelled || mesa.orgId !== tenant.orgId || mesa.sucursalId !== tenant.sucursalId) return;
+          const db = await getDb(tenant.orgId, tenant.sucursalId);
+          await db.collections.mesas.upsert(mesa);
+        });
+        await cargarDatos();
+      })
+      .catch((err: unknown) => setError(mensajeDeError(err)))
+      .finally(() => {
+        if (!cancelled) setCargando(false);
+      });
+
     return () => {
+      cancelled = true;
       unsubscribe();
-      disconnectRealtime(socket);
+      if (socket) disconnectRealtime(socket);
       stopAutoSync();
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);
@@ -127,7 +154,27 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
         { orgId: session.user.orgId, sucursalId: session.user.sucursalId },
         API_URL,
       );
+      setPendingCount(await getPendingCommandCount({ orgId: session.user.orgId, sucursalId: session.user.sucursalId }));
       setForm(FORM_VACIO);
+    } catch (err) {
+      setError(mensajeDeError(err));
+    }
+  }
+
+  async function handleExportLegacyData() {
+    try {
+      const snapshots = await exportLegacyDatabases(session.user.orgId);
+      if (snapshots.length === 0) {
+        setError("No se encontraron datos locales antiguos para exportar.");
+        return;
+      }
+      const file = new Blob([JSON.stringify(snapshots, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "comanda-datos-locales-antiguos.json";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (err) {
       setError(mensajeDeError(err));
     }
@@ -163,6 +210,9 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
       </header>
 
       <ErrorBanner message={error} />
+
+      {pendingCount > 0 && <p role="status" className="text-muted">{pendingCount} pedido(s) guardado(s) localmente, pendiente(s) de sincronización o revisión.</p>}
+      {legacyAvailable && <button type="button" className="btn btn-secondary" onClick={() => void handleExportLegacyData()}>Exportar datos locales antiguos</button>}
 
       {cargando ? (
         <p className="text-muted">Cargando...</p>
