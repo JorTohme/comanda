@@ -87,6 +87,13 @@ Módulos = los bounded contexts ya definidos en doc §4.2: `auth`, `tenancy`, `c
 - `cobrosDigitalesSinTurno` cuenta Cobros Mercado Pago de la sucursal sin turno; `pedidosLegacySinCobro` cuenta, para un turno, Pedidos vinculados por `turnoCajaId` que aún no tienen Cobro.
 - Un turno abierto heredado `legacy_mixta` bloquea escrituras monetarias hasta su conciliación explícita bajo el procedimiento de rollout.
 
+### Reconciliación de Mercado Pago
+
+- Cada checkout reserva un intento `Pago` con referencia externa igual al UUID del intento. La preferencia se crea fuera de la transacción y se verifica por monto en centavos, moneda, comercio y referencia antes de guardar su URL.
+- Los webhooks no son evidencia por sí solos: el ACL vuelve a consultar el pago y su orden de comercio para vincularlo con la preferencia local. Los estados permanentes inconsistentes quedan visibles como `incidente`; pagos aprobados crean el `Cobro` idempotente con la fecha de aprobación informada por el proveedor.
+- Ante timeout de creación, no se crea una segunda preferencia a ciegas: al expirar la reserva se busca por referencia externa y se recupera solo un resultado único y verificado. Errores transitorios del webhook responden no-2xx para permitir el retry del proveedor.
+- La conciliación manual está limitada a administradores y tenant actual. Reembolsos, pagos parciales y split tender quedan explícitamente fuera de alcance; los incidentes de cobro se investigan y no se reinterpretan como efectivo.
+
 Mapeado 1:1 al roadmap de doc §8, partido en slices chicos y mergeables — cada iteración cierra a `main` antes de arrancar la siguiente.
 
 ### MVP

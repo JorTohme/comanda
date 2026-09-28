@@ -67,14 +67,19 @@ export type TurnoCaja = z.infer<typeof turnoCajaSchema>;
 const pedidoCajaResumenSchema = pedidoSchema.omit({ version: true, cobro: true });
 export const turnoCajaDetalleSchema = turnoCajaSchema.extend({ movimientos: z.array(movimientoCajaSchema), pedidos: z.array(pedidoCajaResumenSchema), totalCalculado: z.number().int().nullable(), cobrosDigitalesSinTurno: z.number().int().nonnegative(), pedidosLegacySinCobro: z.number().int().nonnegative() });
 export type TurnoCajaDetalle = z.infer<typeof turnoCajaDetalleSchema>;
-export const estadoPagoSchema = z.enum(["pendiente", "aprobado", "rechazado"]);
+export const estadoPagoSchema = z.enum(["creando", "pendiente", "aprobado", "rechazado", "incidente"]);
 export type EstadoPago = z.infer<typeof estadoPagoSchema>;
 export const pagoSchema = tenantSchema.extend({
   id: z.string().uuid(),
   pedidoId: z.string().uuid(),
   mpPaymentId: z.string().nullable(),
-  mpPreferenceId: z.string(),
-  mpInitPoint: z.string(),
+  externalReference: z.string().uuid(),
+  mpPreferenceId: z.string().nullable(),
+  mpInitPoint: z.string().nullable(),
+  merchantId: z.string().nullable(),
+  moneda: z.string(),
+  leaseUntil: timestampSchema.nullable(),
+  incidente: z.string().nullable(),
   estado: estadoPagoSchema,
   monto: z.number().int(),
   createdAt: timestampSchema,
@@ -247,7 +252,11 @@ export async function listSucursales(baseUrl: string, options?: ApiOptions): Pro
 export async function crearSucursal(baseUrl: string, input: CreateSucursalInput, options?: ApiOptions): Promise<Sucursal> { const url = `${baseUrl}/sucursales`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), sucursalSchema, "POST", url); }
 
 const preferenciaPagoSchema = z.object({ initPoint: z.string(), preferenceId: z.string() });
+export const reconciliacionPagoSchema = z.object({ estado: z.string(), incidente: z.string().nullable() });
+export type ReconciliacionPago = z.infer<typeof reconciliacionPagoSchema>;
 export async function crearPreferenciaPago(baseUrl: string, pedidoId: string, options?: ApiOptions): Promise<{ initPoint: string; preferenceId: string }> { const url = `${baseUrl}/pagos/preferencia`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify({ pedidoId }) }, options), preferenciaPagoSchema, "POST", url); }
+export async function listarIncidentesPago(baseUrl: string, options?: ApiOptions): Promise<Pago[]> { const url = `${baseUrl}/pagos/incidentes`; return parseJsonOrThrow(await apiFetch(url, {}, options), z.array(pagoSchema), "GET", url); }
+export async function reconciliarPago(baseUrl: string, id: string, paymentId: string, options?: ApiOptions): Promise<ReconciliacionPago> { const url = `${baseUrl}/pagos/${id}/reconciliar`; return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify({ paymentId }) }, options), reconciliacionPagoSchema, "POST", url); }
 
 export const ventaDiariaSchema = z.object({ fecha: z.string(), total: z.number().int() });
 export type VentaDiaria = z.infer<typeof ventaDiariaSchema>;

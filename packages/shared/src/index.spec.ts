@@ -5,6 +5,9 @@ import {
   categoriaSchema,
   pedidoSchema,
   turnoCajaDetalleSchema,
+  pagoSchema,
+  listarIncidentesPago,
+  reconciliarPago,
   avanzarEstadoPedido,
   centavosToPesos,
   cobrarPedidoEfectivo,
@@ -314,6 +317,31 @@ describe("apiFetch 401 retry (via listCategorias)", () => {
     await expect(listCategorias("http://api.test")).rejects.toMatchObject({ status: 429, retryAfterMs: 3_600_000 });
   });
 
+});
+
+describe("payment incident contracts", () => {
+  const valid = {
+    id: "00000000-0000-0000-0000-000000000001", pedidoId: "00000000-0000-0000-0000-000000000002",
+    externalReference: "00000000-0000-0000-0000-000000000003", mpPaymentId: null, mpPreferenceId: null, mpInitPoint: null,
+    merchantId: "777", moneda: "ARS", leaseUntil: null, incidente: "Mismatch", estado: "incidente", monto: 1000,
+    orgId: "00000000-0000-0000-0000-000000000011", sucursalId: "00000000-0000-0000-0000-000000000012",
+    createdAt: "2026-09-27T00:00:00.000Z", updatedAt: "2026-09-27T00:00:00.000Z",
+  };
+
+  it("accepts nullable preference and expands the payment lifecycle", () => {
+    expect(pagoSchema.parse(valid)).toEqual(valid);
+    expect(pagoSchema.safeParse({ ...valid, estado: "unknown" }).success).toBe(false);
+    expect(pagoSchema.safeParse({ ...valid, externalReference: "pedido-legacy" }).success).toBe(false);
+  });
+
+  it("uses tenant API routes for listing and reconciling incidents", async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(fakeResponse(200, [valid])).mockResolvedValueOnce(fakeResponse(200, { estado: "aprobado", incidente: null }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await expect(listarIncidentesPago("http://api.test")).resolves.toEqual([valid]);
+    await expect(reconciliarPago("http://api.test", valid.id, "provider-payment-1")).resolves.toEqual({ estado: "aprobado", incidente: null });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["http://api.test/pagos/incidentes", `http://api.test/pagos/${valid.id}/reconciliar`]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({ paymentId: "provider-payment-1" });
+  });
 });
 
 

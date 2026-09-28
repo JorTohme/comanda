@@ -63,6 +63,7 @@ Railway hosts one API service from the monorepo root, plus managed PostgreSQL an
 - `CORS_ORIGINS` containing the two Vercel origins
 - `PUBLIC_BASE_URL` set to Railway's generated API URL
 - `MERCADOPAGO_ACCESS_TOKEN`
+- `MERCADOPAGO_MERCHANT_ID` with the expected collector ID
 - `MERCADOPAGO_WEBHOOK_SECRET`
 
 The API health check targets `GET /health`. The generated Railway domain is registered in Mercado Pago as the webhook base URL.

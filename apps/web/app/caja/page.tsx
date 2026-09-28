@@ -8,10 +8,13 @@ import {
   cobrarPedidoEfectivo,
   crearPreferenciaPago,
   listPedidos,
+  listarIncidentesPago,
+  reconciliarPago,
   obtenerTurnoActual,
   pesosToCentavos,
   registrarMovimiento,
   type Pedido,
+  type Pago,
   type TipoMovimientoCaja,
   type TurnoCaja,
   type TurnoCajaDetalle,
@@ -21,6 +24,7 @@ import { ErrorBanner } from "../_components/ErrorBanner";
 import { Card } from "../_components/Card";
 import { Button } from "../_components/Button";
 import { Badge } from "../_components/Badge";
+import { useSession } from "../_components/useSession";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -44,6 +48,9 @@ export default function CajaPage() {
   const [cargando, setCargando] = useState(true);
   const [pedidosPendientesCobro, setPedidosPendientesCobro] = useState<Pedido[]>([]);
   const [cobrandoPedidoId, setCobrandoPedidoId] = useState<string | null>(null);
+  const [incidentesPago, setIncidentesPago] = useState<Pago[]>([]);
+  const [paymentIds, setPaymentIds] = useState<Record<string, string>>({});
+  const { session } = useSession();
 
   const [montoInicialPesos, setMontoInicialPesos] = useState("");
   const [movimientoForm, setMovimientoForm] = useState(MOVIMIENTO_FORM_VACIO);
@@ -60,6 +67,22 @@ export default function CajaPage() {
       .then((pedidos) => setPedidosPendientesCobro(pedidos.filter((p) => p.estado === "entregado")))
       .catch((err: unknown) => setError(mensajeDeError(err)));
   }, []);
+
+  useEffect(() => {
+    if (session?.user.rol !== "admin") return;
+    listarIncidentesPago(API_URL).then(setIncidentesPago).catch((err: unknown) => setError(mensajeDeError(err)));
+  }, [session?.user.rol]);
+
+  async function handleReconciliarPago(pago: Pago) {
+    const paymentId = paymentIds[pago.id]?.trim();
+    if (!paymentId) return;
+    setError(null);
+    try {
+      await reconciliarPago(API_URL, pago.id, paymentId);
+      setIncidentesPago(await listarIncidentesPago(API_URL));
+      setPaymentIds((current) => ({ ...current, [pago.id]: "" }));
+    } catch (err) { setError(mensajeDeError(err)); }
+  }
 
   async function handleCobrarConMercadoPago(pedidoId: string) {
     const checkoutWindow = window.open("", "_blank");
@@ -184,6 +207,32 @@ export default function CajaPage() {
                 >
                   {cobrandoPedidoId === pedido.id ? "Abriendo..." : "Cobrar con Mercado Pago"}
                 </Button>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {session?.user.rol === "admin" && incidentesPago.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="font-serif text-lg font-semibold text-ink">Incidentes de Mercado Pago</h2>
+          <div className="space-y-2">
+            {incidentesPago.map((pago) => (
+              <Card key={pago.id} className="space-y-3 py-3">
+                <p className="text-sm font-medium text-ink">Pedido {pago.pedidoId} · {centavosToPesos(pago.monto)} · {pago.incidente}</p>
+                <p className="text-xs text-muted">Referencia del intento: {pago.externalReference}</p>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    aria-label={`ID de pago de Mercado Pago para ${pago.pedidoId}`}
+                    placeholder="ID de pago de Mercado Pago"
+                    value={paymentIds[pago.id] ?? ""}
+                    onChange={(event) => setPaymentIds((current) => ({ ...current, [pago.id]: event.target.value }))}
+                    className={INPUT_CLASSES}
+                  />
+                  <Button size="sm" variant="secondary" disabled={!paymentIds[pago.id]?.trim()} onClick={() => void handleReconciliarPago(pago)}>
+                    Verificar pago
+                  </Button>
+                </div>
               </Card>
             ))}
           </div>

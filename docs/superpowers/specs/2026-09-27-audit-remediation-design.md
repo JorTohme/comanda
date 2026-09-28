@@ -102,6 +102,8 @@ Introduce one small `Cobro` record per pedido, with a unique pedido reference, t
 - Return a retriable non-2xx for transient reconciliation failures; do not acknowledge work that was neither completed nor stored durably. Permanent mismatches remain visible as reconciliation incidents, without collecting or silently disappearing.
 - Provide a tenant-scoped admin reconciliation action for pending/failed known payments; recovery is possible without depending solely on another webhook.
 - Guard preference creation against concurrent calls and already collected orders. A rejected attempt does not permanently prevent a legitimate new payment attempt; keep history rather than overwrite a previous successful receipt.
+- Reserve each attempt with `externalReference = Pago.id`, expected cents, `ARS`, merchant identity and a 60-second lease under the `Sucursal` lock. Create/search Mercado Pago preferences outside transactions; after an ambiguous timeout, search every result page by stable reference and retrieve complete preference records before attaching the unique verified result. Zero or multiple matches become blocking incidents instead of a blind second checkout.
+- Expose tenant-scoped `incidente` attempts to administrators in Caja, with an explicit provider payment ID verification action. Keep incident history; refunds and payment reversals remain out of scope and require provider-side investigation.
 
 ## 3. Offline and realtime
 
