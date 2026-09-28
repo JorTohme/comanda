@@ -53,7 +53,7 @@ const LABEL_ESTADO_PEDIDO: Record<Pedido["estado"], string> = {
   cerrado: "Cerrado",
 };
 
-export function MozoView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
+export function MozoView({ session, onLogout, onOfflineUpdateSafetyChange }: { session: AuthSession; onLogout: () => void; onOfflineUpdateSafetyChange?: (safe: boolean) => void }) {
   const mesas = useRxData<Mesa>("mesas", session.user.orgId, session.user.sucursalId);
   const platos = useRxData<Plato>("platos", session.user.orgId, session.user.sucursalId);
   const pedidos = useRxData<Pedido>("pedidos", session.user.orgId, session.user.sucursalId);
@@ -63,11 +63,15 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
   const [cargando, setCargando] = useState(true);
   const [form, setForm] = useState(FORM_VACIO);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCountReady, setPendingCountReady] = useState(false);
   const [legacyAvailable, setLegacyAvailable] = useState(false);
 
   useEffect(() => {
     const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
-    void getPendingCommandCount(tenant).then(setPendingCount).catch((err: unknown) => setError(mensajeDeError(err)));
+    void getPendingCommandCount(tenant).then((count) => {
+      setPendingCount(count);
+      setPendingCountReady(true);
+    }).catch((err: unknown) => setError(mensajeDeError(err)));
   }, [commands.length, session.user.orgId, session.user.sucursalId]);
 
   useEffect(() => {
@@ -95,6 +99,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
         ]);
         if (cancelled) return;
         setPendingCount(count);
+        setPendingCountReady(true);
         setLegacyAvailable(legacyNames.length > 0);
         socket = connectRealtime(API_URL);
         stopAutoSync = setupAutoSync(API_URL, tenant, (err) => setError(mensajeDeError(err)), socket);
@@ -113,6 +118,11 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
       stopSnapshotRecovery();
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);
+
+  const hasDraft = form.tipoServicio !== "mesa" || form.mesaId !== "" || form.items.some((item) => item.platoId !== "" || item.cantidad !== "1");
+  useEffect(() => {
+    onOfflineUpdateSafetyChange?.(pendingCountReady && pendingCount === 0 && commands.length === 0 && !hasDraft);
+  }, [commands.length, hasDraft, onOfflineUpdateSafetyChange, pendingCount, pendingCountReady]);
 
   function handleAgregarFila() {
     setForm({ ...form, items: [...form.items, { ...ITEM_VACIO }] });

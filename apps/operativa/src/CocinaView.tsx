@@ -5,6 +5,7 @@ import { API_URL } from "./config";
 import { getDb } from "./db/schema";
 import { useRxData } from "./db/useRxData";
 import { setupSnapshotRecovery } from "./db/reconcile";
+import { getPendingCommandCount } from "./db/sync";
 
 const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
   mesa: "Mesa",
@@ -13,12 +14,20 @@ const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
   delivery: "Delivery",
 };
 
-export function CocinaView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
+export function CocinaView({ session, onLogout, onOfflineUpdateSafetyChange }: { session: AuthSession; onLogout: () => void; onOfflineUpdateSafetyChange?: (safe: boolean) => void }) {
   const pedidosLocal = useRxData<Pedido>("pedidos", session.user.orgId, session.user.sucursalId);
   const pedidos = pedidosLocal.filter((pedido) => pedido.id !== pedido.clientRequestId && Number.isInteger(pedido.version));
   const platos = useRxData<Plato>("platos", session.user.orgId, session.user.sucursalId);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getPendingCommandCount({ orgId: session.user.orgId, sucursalId: session.user.sucursalId })
+      .then((count) => { if (!cancelled) onOfflineUpdateSafetyChange?.(count === 0); })
+      .catch(() => { if (!cancelled) onOfflineUpdateSafetyChange?.(false); });
+    return () => { cancelled = true; };
+  }, [onOfflineUpdateSafetyChange, session.user.orgId, session.user.sucursalId]);
 
   useEffect(() => {
     const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
