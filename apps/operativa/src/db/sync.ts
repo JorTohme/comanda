@@ -1,4 +1,4 @@
-import { createPedido, pedidoSchema, type CreatePedidoInput, type Pedido, type TenantContext } from "@comanda/shared";
+import { ApiError, createPedido, getSessionGeneration, pedidoSchema, readSession, SessionChangedError, subscribeSession, type AuthSession, type CreatePedidoInput, type Pedido, type TenantContext } from "@comanda/shared";
 import { getDb, type OutboxEntry } from "./schema";
 import { assessLegacyCommand, branchDatabaseName } from "./legacy-recovery";
 
@@ -20,7 +20,7 @@ function pedidoOptimista(
     version: 0,
     cobro: null,
     clientRequestId,
-    items: input.items.map((item, index) => {
+    items: input.items.map((item) => {
       const plato = platoById.get(item.platoId);
       return {
         id: crypto.randomUUID(),
@@ -120,7 +120,15 @@ export async function restorePendingOrders(tenant: TenantContext): Promise<void>
     }
 
     const authoritative = await db.collections.pedidos.findOne({ selector: { clientRequestId: command.id } }).exec();
-    if (authoritative && documentData<Record<string, unknown>>(authoritative).id !== command.id) continue;
+    if (authoritative && documentData<Record<string, unknown>>(authoritative).id !== command.id) {
+      const saved = documentData<Record<string, unknown>>(authoritative);
+      if (saved.orgId === tenant.orgId && saved.sucursalId === tenant.sucursalId && pedidoSchema.safeParse(saved).success) {
+        const optimisticOrder = await db.collections.pedidos.findOne({ selector: { id: command.id } }).exec();
+        if (optimisticOrder) await optimisticOrder.remove();
+        await document.remove();
+      }
+      continue;
+    }
     const existing = await db.collections.pedidos.findOne({ selector: { id: command.id } }).exec();
     if (existing) {
       const current = documentData<Record<string, unknown>>(existing);
@@ -157,37 +165,202 @@ export async function getPendingCommandCount(tenant: TenantContext): Promise<num
   return count;
 }
 
-export async function flushOutbox(apiUrl: string, tenant: TenantContext): Promise<void> {
-  const db = await getDb(tenant.orgId, tenant.sucursalId);
-  const entradas = await db.collections.outbox.find().exec();
+type FlushOptions = { signal?: AbortSignal };
+type ReconnectSource = { on(event: "connect", listener: () => void): unknown; off(event: "connect", listener: () => void): unknown };
+const inFlightFlushes = new Map<string, Promise<void>>();
+const requestTimeoutMs = 15_000;
 
-  for (const entrada of entradas) {
-    const command = documentData<OutboxEntry>(entrada);
-    if (command.status === "failed" || command.orgId !== tenant.orgId || command.sucursalId !== tenant.sucursalId) continue;
-    const clientRequestId = command.id;
+function sameTenant(session: AuthSession | null, tenant: TenantContext): session is AuthSession {
+  return Boolean(session && session.user.orgId === tenant.orgId && session.user.sucursalId === tenant.sucursalId);
+}
+
+function sessionUnchanged(session: AuthSession, generation: number, tenant: TenantContext): boolean {
+  const current = readSession();
+  return getSessionGeneration() === generation && sameTenant(current, tenant) && current.user.id === session.user.id;
+}
+
+function abortError(error: unknown): boolean {
+  return error instanceof SessionChangedError || Boolean(error && typeof error === "object" && "name" in error && (error as { name?: string }).name === "AbortError");
+}
+
+function namedError(error: unknown, name: string): boolean {
+  return Boolean(error && typeof error === "object" && "name" in error && (error as { name?: string }).name === name);
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : "Error inesperado al sincronizar el pedido.";
+}
+
+function retryDelay(attempts: number, retryAfterMs?: number): number {
+  const backoff = Math.min(60_000, 2_000 * 2 ** Math.min(attempts - 1, 5));
+  return Math.max(backoff, retryAfterMs ?? 0);
+}
+
+async function postWithTimeout(apiUrl: string, input: CreatePedidoInput, signal?: AbortSignal): Promise<Pedido> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, requestTimeoutMs);
+  const abort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  try {
+    return await createPedido(apiUrl, input, { signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new DOMException("La solicitud de sincronización superó el tiempo límite.", "TimeoutError");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+async function patchCommand(entry: { incrementalPatch(patch: Record<string, unknown>): Promise<unknown> }, patch: Record<string, unknown>): Promise<void> {
+  await entry.incrementalPatch(patch);
+}
+
+function validOptimistic(command: OutboxEntry, tenant: TenantContext): boolean {
+  try {
     const input = JSON.parse(command.input) as CreatePedidoInput;
+    const optimistic = pedidoSchema.safeParse(JSON.parse(command.optimistic));
+    return Boolean(
+      command.id && command.orgId === tenant.orgId && command.sucursalId === tenant.sucursalId &&
+      input.clientRequestId === command.id && optimistic.success && optimistic.data.id === command.id &&
+      optimistic.data.clientRequestId === command.id && optimistic.data.orgId === tenant.orgId &&
+      optimistic.data.sucursalId === tenant.sucursalId,
+    );
+  } catch {
+    return false;
+  }
+}
 
+async function recordDeliveryError(entry: { incrementalPatch(patch: Record<string, unknown>): Promise<unknown> }, command: OutboxEntry, error: unknown): Promise<void> {
+  if (error instanceof ApiError && error.status === 401) {
+    await patchCommand(entry, { status: "pending", retryAt: Number.MAX_SAFE_INTEGER, errorCode: "auth_required", errorMessage: errorText(error) });
+    return;
+  }
+  if (error instanceof ApiError && ([408, 429].includes(error.status) || error.status >= 500) || error instanceof TypeError || namedError(error, "TimeoutError")) {
+    const attempts = Math.max(0, command.attempts) + 1;
+    const retryAfter = error instanceof ApiError ? error.retryAfterMs : undefined;
+    await patchCommand(entry, { status: "pending", attempts, retryAt: Date.now() + retryDelay(attempts, retryAfter), errorCode: error instanceof ApiError ? `http_${error.status}` : "network_error", errorMessage: errorText(error) });
+    return;
+  }
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500 || namedError(error, "ZodError") || error instanceof SyntaxError) {
+    const code = error instanceof ApiError ? `http_${error.status}` : "invalid_response";
+    await patchCommand(entry, { status: "failed", retryAt: 0, errorCode: code, errorMessage: errorText(error) });
+    return;
+  }
+  throw error;
+}
+
+async function drainOutbox(apiUrl: string, tenant: TenantContext, options: FlushOptions): Promise<void> {
+  const session = readSession();
+  if (!sameTenant(session, tenant) || options.signal?.aborted) return;
+  const generation = getSessionGeneration();
+  const db = await getDb(tenant.orgId, tenant.sucursalId);
+  const entries = await db.collections.outbox.find().exec();
+  if (entries.some((entry) => {
+    const command = documentData<OutboxEntry>(entry);
+    return command.status === "pending" && command.orgId === tenant.orgId && command.sucursalId === tenant.sucursalId && command.errorCode === "auth_required";
+  })) return;
+
+  for (const entry of entries) {
+    if (options.signal?.aborted || !sessionUnchanged(session, generation, tenant)) return;
+    const command = documentData<OutboxEntry>(entry);
+    if (command.status !== "pending" || command.orgId !== tenant.orgId || command.sucursalId !== tenant.sucursalId || command.retryAt > Date.now()) continue;
+    if (!validOptimistic(command, tenant)) {
+      await patchCommand(entry, { status: "failed", retryAt: 0, errorCode: "invalid_command", errorMessage: "El comando local no coincide con el pedido o la sucursal guardada." });
+      continue;
+    }
+
+    const input = JSON.parse(command.input) as CreatePedidoInput;
+    let pedidoReal: Pedido;
     try {
-      const pedidoReal = await createPedido(apiUrl, input);
-      await db.collections.pedidos.findOne(clientRequestId).remove();
-      await db.collections.pedidos.upsert(pedidoReal);
-      await entrada.remove();
-    } catch (err) {
-      if (err instanceof TypeError) continue; // network failure — leave queued for the next attempt
+      pedidoReal = await postWithTimeout(apiUrl, input, options.signal);
+    } catch (error) {
+      if (options.signal?.aborted || abortError(error) || !sessionUnchanged(session, generation, tenant)) return;
+      await recordDeliveryError(entry, command, error);
+      // Authentication is a session-wide condition, not a command-local failure.
+      // Stop this drain so later commands wait until the session is refreshed.
+      if (error instanceof ApiError && error.status === 401) return;
+      continue;
+    }
 
-      // real HTTP/validation error: won't resolve by retrying — clean up and surface it
-      await db.collections.pedidos.findOne(clientRequestId).remove();
-      await entrada.remove();
-      throw err;
+    if (options.signal?.aborted || !sessionUnchanged(session, generation, tenant)) return;
+    const validated = pedidoSchema.safeParse(pedidoReal);
+    if (!validated.success || validated.data.orgId !== tenant.orgId || validated.data.sucursalId !== tenant.sucursalId || validated.data.clientRequestId !== command.id || validated.data.id === command.id) {
+      await patchCommand(entry, { status: "failed", retryAt: 0, errorCode: "invalid_response", errorMessage: "La respuesta del servidor no confirma este pedido y sucursal." });
+      continue;
+    }
+
+    // Keep the durable command until the authoritative projection is stored and the optimistic row is removed.
+    await db.collections.pedidos.upsert(validated.data);
+    const optimisticOrder = await db.collections.pedidos.findOne({ selector: { id: command.id } }).exec();
+    if (optimisticOrder) await optimisticOrder.remove();
+    await entry.remove();
+  }
+}
+
+export async function flushOutbox(apiUrl: string, tenant: TenantContext, options: FlushOptions = {}): Promise<void> {
+  const key = `${new URL(apiUrl).origin}:${tenant.orgId}:${tenant.sucursalId}`;
+  const existing = inFlightFlushes.get(key);
+  if (existing) return existing;
+  const navigator = globalThis.navigator as Navigator & { locks?: LockManager };
+  const execute = () => drainOutbox(apiUrl, tenant, options);
+  const pending = (navigator?.locks
+    ? navigator.locks.request<void>(`comanda.outbox:${tenant.orgId}:${tenant.sucursalId}`, { mode: "exclusive", signal: options.signal }, async () => { await execute(); })
+    : execute()).finally(() => {
+      if (inFlightFlushes.get(key) === pending) inFlightFlushes.delete(key);
+    });
+  inFlightFlushes.set(key, pending);
+  return pending;
+}
+
+async function resumeAuthenticationSuspended(tenant: TenantContext): Promise<void> {
+  const session = readSession();
+  if (!sameTenant(session, tenant)) return;
+  const db = await getDb(tenant.orgId, tenant.sucursalId);
+  const entries = await db.collections.outbox.find().exec();
+  for (const entry of entries) {
+    const command = documentData<OutboxEntry>(entry);
+    if (command.status === "pending" && command.orgId === tenant.orgId && command.sucursalId === tenant.sucursalId && command.errorCode === "auth_required") {
+      await patchCommand(entry, { retryAt: 0, errorCode: null, errorMessage: null });
     }
   }
 }
 
-export function setupAutoSync(apiUrl: string, tenant: TenantContext, onError?: (err: unknown) => void): () => void {
-  const handler = () => {
-    flushOutbox(apiUrl, tenant).catch((err: unknown) => onError?.(err));
+export function setupAutoSync(apiUrl: string, tenant: TenantContext, onError?: (err: unknown) => void, socket?: ReconnectSource): () => void {
+  let disposed = false;
+  let controller = new AbortController();
+  const visible = () => typeof document === "undefined" || document.visibilityState === "visible";
+  const trigger = () => {
+    if (disposed || !visible() || !sameTenant(readSession(), tenant)) return;
+    void flushOutbox(apiUrl, tenant, { signal: controller.signal }).catch((error: unknown) => {
+      if (!abortError(error)) onError?.(error);
+    });
   };
-  window.addEventListener("online", handler);
-  handler();
-  return () => window.removeEventListener("online", handler);
+  const onSession = () => {
+    controller.abort();
+    controller = new AbortController();
+    void resumeAuthenticationSuspended(tenant).then(trigger).catch((error: unknown) => onError?.(error));
+  };
+  const onVisibility = () => { if (visible()) trigger(); };
+  const events = typeof window === "undefined" ? null : window;
+  const visibilityTarget = typeof document === "undefined" ? null : document;
+  events?.addEventListener("online", trigger);
+  events?.addEventListener("focus", trigger);
+  visibilityTarget?.addEventListener("visibilitychange", onVisibility);
+  const timer = setInterval(trigger, 5_000);
+  socket?.on("connect", trigger);
+  const unsubscribe = subscribeSession(onSession);
+  trigger();
+  return () => {
+    disposed = true;
+    controller.abort();
+    clearInterval(timer);
+    events?.removeEventListener("online", trigger);
+    events?.removeEventListener("focus", trigger);
+    visibilityTarget?.removeEventListener("visibilitychange", onVisibility);
+    socket?.off("connect", trigger);
+    unsubscribe();
+  };
 }

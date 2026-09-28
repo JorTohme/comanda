@@ -119,22 +119,36 @@ The system MUST persist a tenant-scoped outbox command before writing its optimi
 
 **Verification status:** Jest tests exercise write ordering, optimistic reconstruction, tenant-scoped counting, proof-gated migration, and raw quarantine using in-memory doubles. Browser IndexedDB persistence, migration behavior, cold reload, and multi-tab behavior remain pending Plan04 and are not claimed as verified here.
 
-### Requirement: Queued Pedidos sync automatically on reconnect
+### Requirement: Queued Pedidos retry without losing commands
 
-The system MUST attempt to deliver every queued Pedido to `POST /pedidos` when the browser regains connectivity, without requiring a manual retry or a page reload.
+The system MUST serialize delivery by organization and branch with Web Locks where available, and MUST coalesce same-key requests within a tab. Without Web Locks, delivery is serialized only within the current tab; idempotency MUST still use the same `clientRequestId` and immutable input. Before and after each POST, the system MUST verify the active session generation, user, organization and branch. A changed session or tenant, request cancellation, or timeout MUST NOT delete the outbox command or its optimistic Pedido.
 
-#### Scenario: Connectivity returns
+Transient network failures, request timeouts, HTTP 408/429, and HTTP 5xx MUST remain pending with bounded exponential backoff. A valid `Retry-After` value MUST be treated as a minimum delay. HTTP 400/403/404/409/422 and malformed successful responses MUST be marked failed for recovery while retaining the command and projection. HTTP 401 MUST suspend automatic delivery until a valid session notification. The authoritative Pedido MUST pass the shared schema and match the command's `clientRequestId` and tenant; it MUST be stored locally before the optimistic projection and command are removed. Any local write failure MUST retain the outbox command.
 
-- GIVEN one or more Pedidos are queued in the outbox
-- WHEN the browser's `online` event fires
-- THEN the system MUST send each queued Pedido to the server, and on success MUST replace the optimistic local record with the server's response (same `clientRequestId`, matched and reconciled — no duplicate entry)
+Startup, `online`, `focus`, visible-tab transitions, socket reconnects, and a five-second foreground timer MUST check due commands. Cleanup MUST remove listeners and timers and abort outstanding requests. The foreground timer MUST respect `retryAt` and MUST NOT bypass server retry delays.
 
-### Requirement: A real validation error does not stay queued
+#### Scenario: A transient response preserves identity and backs off
 
-The system MUST distinguish a network failure (no response reached the server) from an HTTP error response. A network failure MUST stay queued for retry; an HTTP error response MUST be surfaced to the Mozo immediately and MUST NOT be retried automatically.
+- GIVEN a queued Pedido and the server returns HTTP 503 or 429
+- WHEN delivery is attempted
+- THEN the command and optimistic Pedido MUST remain, its attempt and next retry time MUST be updated, and the next POST MUST reuse the same input and `clientRequestId`
 
-#### Scenario: Server rejects the payload
+#### Scenario: The server rejects the command permanently
 
-- GIVEN the device has network connectivity
-- WHEN a queued (or newly submitted) Pedido is sent and the server responds with an HTTP error (e.g. 400)
-- THEN the system MUST show that error to the Mozo and MUST NOT keep retrying that same request automatically
+- GIVEN a queued Pedido and the server returns HTTP 400, 403, 404, 409, 422, or an invalid successful payload
+- WHEN delivery is attempted
+- THEN the command MUST be marked failed and remain available with its optimistic Pedido for recovery; it MUST NOT be silently deleted or automatically retried
+
+#### Scenario: The active session or branch changes during delivery
+
+- GIVEN a POST is in flight for one branch
+- WHEN its session generation or user/tenant changes before the response is applied
+- THEN the late response MUST NOT mutate local data and the command MUST remain pending
+
+#### Scenario: Local persistence fails after server success
+
+- GIVEN the server returns a valid authoritative Pedido
+- WHEN storing that Pedido or removing its optimistic projection fails
+- THEN the outbox command MUST remain so a later idempotent attempt can recover the authoritative row
+
+**Verification status:** Jest tests cover HTTP classification, timeout/abort, identity retention, tenant/generation cancellation, lock/singleflight coordination, local-write failure, and trigger cleanup. Real multi-tab Web Locks, browser IndexedDB, and end-to-end socket reconnection remain pending Plan04.

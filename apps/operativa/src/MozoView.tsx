@@ -102,8 +102,8 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
         if (cancelled) return;
         setPendingCount(count);
         setLegacyAvailable(legacyNames.length > 0);
-        stopAutoSync = setupAutoSync(API_URL, tenant, (err) => setError(mensajeDeError(err)));
         socket = connectRealtime(API_URL);
+        stopAutoSync = setupAutoSync(API_URL, tenant, (err) => setError(mensajeDeError(err)), socket);
         socket.on("pedido.actualizado", async (pedido: Pedido) => {
           if (cancelled || pedido.orgId !== tenant.orgId || pedido.sucursalId !== tenant.sucursalId) return;
           const db = await getDb(tenant.orgId, tenant.sucursalId);
