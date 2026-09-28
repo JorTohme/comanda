@@ -1,31 +1,24 @@
 # Autenticación y continuidad local
 
-Esta guía explica cómo iniciar el primer tenant y qué no se puede romper cuando se modifique un módulo de negocio.
+Esta guía documenta el acceso por invitación y los límites de sesión que deben respetarse al modificar módulos de negocio.
 
-## Inicio rápido
+## Provisionamiento
 
-1. Definí `DATABASE_URL` y un `JWT_SECRET` largo y aleatorio.
-2. Aplicá las migraciones con `pnpm --filter api exec prisma migrate dev`.
-3. Creá la primera organización, sucursal y usuario con `POST /auth/register`.
-4. Iniciá sesión en el header de la consola con ese email y contraseña.
+1. La primera persona administradora se provisiona con el comando operativo `pnpm --filter api invite-admin -- --org "Restaurant" --branch "Central" --email owner@example.com`; no existe registro público.
+2. Una persona administradora inicia sesión en la consola y crea invitaciones desde **Equipo** (`/equipo`). El enlace se genera manualmente y debe compartirse con la persona invitada; la aplicación no envía emails.
+3. Las invitaciones del equipo solo permiten los roles `caja`, `mozo` y `cocina`, y solo una sucursal de la organización autenticada. Vencen a las 72 horas.
+4. La persona invitada abre `/invitacion`, define su nombre y contraseña, y activa el enlace una sola vez. El email, rol, organización y sucursal provienen de la invitación, no del formulario.
 
-## Decisiones que ya están cerradas
+El enlace de activación es una credencial temporal: compartilo únicamente con su destinatario y no lo registres en logs, analítica ni almacenamiento persistente. Si la consola no llega a mostrar el enlace, la invitación no puede recuperarse desde la interfaz y habrá que crear otra.
 
-| Tema | Decisión |
-|---|---|
-| Sesión | JWT HS256 de ocho horas en `Authorization: Bearer <token>`. `JWT_SECRET` es obligatoria y no tiene valor por defecto: la app no arranca sin definirla. |
-| Contraseñas | `scrypt` nativo con salt aleatorio; no se almacena texto plano. |
-| Tenant | El token contiene `orgId` y `sucursalId`; ambos IDs scopean todas las consultas de negocio. |
-| Rutas públicas | Sólo `GET /health` y `POST /auth/register` / `POST /auth/login`. |
-| Contratos cliente | `@comanda/shared` adjunta el token de `localStorage` y valida respuestas exitosas con Zod. |
+## Sesiones y sucursales
 
-## Límites intencionales
+- La consola persiste la sesión del navegador en `localStorage` y envía el token de acceso como `Authorization: Bearer <token>`.
+- `POST /auth/refresh` rota el token y conserva la sucursal vinculada al token vigente; no acepta una sucursal elegida por el cliente.
+- Solo una persona administradora puede cambiar la sucursal activa mediante `POST /auth/switch-sucursal`. El endpoint valida que la sucursal pertenezca a la misma organización.
+- Los cambios de sesión se notifican entre componentes y pestañas. Los datos o respuestas pendientes de otra identidad, organización o sucursal deben descartarse.
+- La navegación de la consola mejora la experiencia, pero no es autorización: los endpoints deben aplicar sus propios roles y límites de tenant.
 
-- `POST /auth/register` es un bootstrap. Antes de producción necesita reglas de invitación o provisioning: no debe quedar público sin ese flujo.
-- `POST /auth/register` crea organización y sucursal nuevas en cada llamada: hoy no hay forma de sumar un segundo usuario (caja, mozo, cocina) a una sucursal ya existente por API. Falta un endpoint tipo `POST /usuarios`, protegido por rol `admin`, que tome `orgId`/`sucursalId` del token en vez de crearlos de cero.
-- `admin`, `caja`, `mozo` y `cocina` ya viajan en el token, pero todavía no hay permisos por endpoint. Agregalos sólo cuando exista la matriz de roles.
-- Las filas anteriores a la migración se conservan bajo `Organización inicial` / `Sucursal inicial`. No son accesibles hasta provisionar un usuario de esa sucursal de forma administrativa.
+## Límites de tenant
 
-## Regla para próximos cambios
-
-Todo service de negocio debe recibir `TenantContext` y aplicarlo tanto a los lookups por ID como a las relaciones (`Plato → Categoria`, `Pedido → Mesa/Plato`). Un ID solo nunca autoriza acceso.
+Todo service de negocio recibe `TenantContext` y lo aplica tanto a los lookups por ID como a las relaciones (`Plato → Categoria`, `Pedido → Mesa/Plato`). Un ID solo nunca autoriza acceso. Para invitar personal, el servidor obtiene `orgId` del actor autenticado y comprueba que la sucursal solicitada pertenezca a esa organización.

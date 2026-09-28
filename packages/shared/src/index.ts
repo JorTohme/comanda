@@ -153,6 +153,7 @@ export type AbrirTurnoInput = { montoInicial: number };
 export type CerrarTurnoInput = { montoDeclarado: number };
 export type CreateMovimientoInput = { tipo: TipoMovimientoCaja; monto: number; descripcion: string };
 export type CreateSucursalInput = { nombre: string; timezone?: string };
+export type CreateInvitationInput = { email: string; sucursalId: string; rol: "caja" | "mozo" | "cocina" };
 export interface ApiOptions { accessToken?: string; signal?: AbortSignal; }
 
 // Static "what's next" chain for the client-side UX hint. Does not know about self-delivery
@@ -329,6 +330,11 @@ export async function refreshSession(baseUrl: string, refreshToken: string): Pro
 export async function logout(baseUrl: string, refreshToken: string): Promise<void> {
   const url = `${baseUrl}/auth/logout`;
   return throwIfNotOk(await fetch(url, { method: "POST", headers: headers(undefined, true), body: JSON.stringify({ refreshToken }) }), "POST", url);
+}
+const invitationSchema = z.object({ activationUrl: z.string().url(), expiresAt: timestampSchema });
+export async function createInvitation(baseUrl: string, input: CreateInvitationInput, options?: ApiOptions): Promise<{ activationUrl: string; expiresAt: string }> {
+  const url = `${baseUrl}/auth/invitations`;
+  return parseJsonOrThrow(await apiFetch(url, { method: "POST", body: JSON.stringify(input) }, options), invitationSchema, "POST", url);
 }
 // Only admins call this; the caller must be authenticated (unlike login/register/refresh/logout).
 export async function switchSucursal(baseUrl: string, sucursalId: string, options?: ApiOptions): Promise<AuthSession> {

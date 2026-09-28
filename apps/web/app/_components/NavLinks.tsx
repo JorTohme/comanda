@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "./useSession";
 
 const LINKS_BY_ROLE = {
-  admin: ["/catalogo", "/salon", "/pedidos", "/caja", "/reportes", "/sucursales"],
+  admin: ["/catalogo", "/salon", "/pedidos", "/caja", "/reportes", "/sucursales", "/equipo"],
   caja: ["/pedidos", "/caja"],
   mozo: ["/salon", "/pedidos"],
   cocina: ["/catalogo", "/pedidos"],
@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/caja", label: "Caja" },
   { href: "/reportes", label: "Reportes" },
   { href: "/sucursales", label: "Sucursales" },
+  { href: "/equipo", label: "Equipo" },
 ];
 
 export function NavLinks() {

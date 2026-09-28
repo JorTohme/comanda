@@ -26,6 +26,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     "/caja": ["admin", "caja"],
     "/reportes": ["admin"],
     "/sucursales": ["admin"],
+    "/equipo": ["admin"],
   };
   const permitted = rolesByRoute[pathname];
   if (permitted && !permitted.includes(session.user.rol)) {

@@ -13,8 +13,10 @@ import {
   cobrarPedidoEfectivo,
   clearSession,
   createCategoria,
+  createInvitation,
   listCategorias,
   acceptInvitation,
+  ApiError,
   pesosToCentavos,
   posicionPorDefecto,
   saveSession,
@@ -32,6 +34,7 @@ import {
   reportesSchema,
   reportesConsolidadoSchema,
 } from "./index";
+import type { CreateInvitationInput } from "./index";
 
 describe("centavosToPesos", () => {
   it("formats whole pesos with two decimals", () => {
@@ -414,6 +417,51 @@ describe("acceptInvitation", () => {
       nombre: "María",
       password: "correct-horse-battery-staple",
     });
+  });
+});
+
+describe("createInvitation", () => {
+  const originalFetch = global.fetch;
+  const originalLocalStorage = (globalThis as { localStorage?: unknown }).localStorage;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
+  });
+
+  it("posts only employee invitation fields with the current session token", async () => {
+    const sucursalId = "00000000-0000-0000-0000-000000000012";
+    (globalThis as { localStorage?: unknown }).localStorage = fakeStorage({ "comanda.session": JSON.stringify(NEW_SESSION) });
+    const fetchMock = jest.fn().mockResolvedValue(fakeResponse(201, {
+      activationUrl: "http://localhost:3000/invitacion?token=test-only-token",
+      expiresAt: "2026-09-30T12:00:00.000Z",
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const input: CreateInvitationInput = { email: "staff@example.test", sucursalId, rol: "mozo" };
+    await createInvitation("http://localhost:3001", input);
+
+    const [url, request] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://localhost:3001/auth/invitations");
+    expect(JSON.parse(request.body as string)).toEqual({ email: "staff@example.test", sucursalId, rol: "mozo" });
+    expect(new Headers(request.headers).get("authorization")).toBe("Bearer new-access-token");
+  });
+
+  it("surfaces a forbidden response as ApiError", async () => {
+    (globalThis as { localStorage?: unknown }).localStorage = fakeStorage({ "comanda.session": JSON.stringify(NEW_SESSION) });
+    global.fetch = jest.fn().mockResolvedValue(fakeResponse(403)) as unknown as typeof fetch;
+
+    await expect(createInvitation("http://localhost:3001", {
+      email: "staff@example.test",
+      sucursalId: NEW_SESSION.user.sucursalId,
+      rol: "caja",
+    })).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("does not permit admin invitations in the employee input type", () => {
+    // @ts-expect-error Employee invitations cannot grant administrator access.
+    const invalid: CreateInvitationInput = { email: "owner@example.test", sucursalId: NEW_SESSION.user.sucursalId, rol: "admin" };
+    expect(invalid.rol).toBe("admin");
   });
 });
 
