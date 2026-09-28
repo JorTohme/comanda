@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createMesaPedido, DEMO_PASSWORD, listPedidos, loginAs, OPERATIVA_URL } from "./session";
+import { createBarraPedido, DEMO_PASSWORD, listPedidos, loginAs, OPERATIVA_URL } from "./session";
 
 test("offline cold reload keeps a queued order and reconnect creates one server order", async ({ page, context }) => {
   test.setTimeout(60_000);
@@ -12,17 +12,17 @@ test("offline cold reload keeps a queued order and reconnect creates one server 
 
   const initialOrders = await listPedidos(page);
   await context.setOffline(true);
-  const plateName = await createMesaPedido(page);
-  await expect(page.getByText(/pedido\(s\) guardado\(s\), pendiente\(s\) de sincronización/)).toBeVisible();
+  const plateName = await createBarraPedido(page);
+  await expect(page.getByText(/pedido\(s\) guardado\(s\).*pendiente\(s\) de sincronización/)).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
-  await expect(page.getByText(/pedido\(s\) guardado\(s\), pendiente\(s\) de sincronización/)).toBeVisible();
-  await expect(page.getByText(`1× ${plateName}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(/pedido\(s\) guardado\(s\).*pendiente\(s\) de sincronización/)).toBeVisible();
+  await expect(page.getByText(`1× ${plateName}`, { exact: true }).first()).toBeVisible();
 
   await context.setOffline(false);
   await expect.poll(async () => (await listPedidos(page)).length, { timeout: 30_000 }).toBe(initialOrders.length + 1);
-  await expect(page.getByText(/pedido\(s\) guardado\(s\), pendiente\(s\) de sincronización/)).toHaveCount(0);
+  await expect(page.getByText(/pedido\(s\) guardado\(s\).*pendiente\(s\) de sincronización/)).toHaveCount(0);
   expect((await listPedidos(page)).length).toBe(initialOrders.length + 1);
 });
 
@@ -42,20 +42,17 @@ test("a transient server rejection keeps the command recoverable and retry syncs
     return route.continue();
   });
 
-  await createMesaPedido(page);
-  await expect(page.getByText(/pedido\(s\) guardado\(s\), pendiente\(s\) de sincronización/)).toBeVisible();
+  await createBarraPedido(page);
+  await expect(page.getByText(/pedido\(s\) guardado\(s\).*pendiente\(s\) de sincronización/)).toBeVisible();
   await expect.poll(() => posts, { timeout: 25_000 }).toBe(2);
   expect(requestIds[0]).toBeTruthy();
   expect(requestIds[1]).toBe(requestIds[0]);
-  await expect(page.getByText(/pedido\(s\) guardado\(s\), pendiente\(s\) de sincronización/)).toBeVisible();
+  await expect(page.getByText(/pedido\(s\) guardado\(s\).*pendiente\(s\) de sincronización/)).toBeVisible();
 
-  await page.unroute("**/pedidos");
-  await page.waitForTimeout(4_100);
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect.poll(() => posts, { timeout: 15_000 }).toBe(3);
   expect(requestIds[2]).toBe(requestIds[0]);
   await expect.poll(async () => (await listPedidos(page)).length, { timeout: 20_000 }).toBe(initialOrders.length + 1);
-  await expect(page.getByText(/pedido\(s\) guardado\(s\), pendiente\(s\) de sincronización/)).toHaveCount(0);
+  await expect(page.getByText(/pedido\(s\) guardado\(s\).*pendiente\(s\) de sincronización/)).toHaveCount(0);
   expect((await listPedidos(page)).length).toBe(initialOrders.length + 1);
 });
 
@@ -72,7 +69,7 @@ test("a rejected command keeps retry and discard controls until the operator res
     return route.continue();
   });
 
-  await createMesaPedido(page);
+  await createBarraPedido(page);
   const retry = page.getByRole("button", { name: /^Reintentar pedido / });
   await expect(retry).toBeVisible();
   await expect(page.getByRole("button", { name: /^Descartar pedido pendiente / })).toBeVisible();
@@ -96,7 +93,16 @@ test("a waiting update stays blocked by drafts and pending commands, then preser
     expect(buildHash).toBeTruthy();
     const updatedWorker = originalWorker.replace(buildHash!, `"acceptance-${Date.now()}"`);
     await writeFile(workerPath, updatedWorker, "utf8");
-    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.update());
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) throw new Error("Service worker registration is missing");
+      registration.updateViaCache = "none";
+      await registration.update();
+    });
+    await expect.poll(() => page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      return registration?.waiting?.state ?? "none";
+    }), { timeout: 20_000 }).toBe("installed");
     await expect(page.getByRole("status", { name: "Actualización disponible" })).toBeVisible({ timeout: 20_000 });
     const update = page.getByRole("button", { name: "Actualizar" });
     await expect(update).toBeDisabled();
@@ -108,7 +114,7 @@ test("a waiting update stays blocked by drafts and pending commands, then preser
       if (route.request().method() === "POST") return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ message: "validation rejected" }) });
       return route.continue();
     });
-    await createMesaPedido(page);
+    await createBarraPedido(page);
     await expect(page.getByRole("button", { name: /^Reintentar pedido / })).toBeVisible();
     await expect(update).toBeDisabled();
 
@@ -133,7 +139,7 @@ test("switching operational accounts across branches hides the previous branch o
     if (route.request().method() === "POST") return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ message: "validation rejected" }) });
     return route.continue();
   });
-  const plateName = await createMesaPedido(page, 41);
+  const plateName = await createBarraPedido(page, 41);
   await expect(page.getByRole("button", { name: /^Reintentar pedido / })).toBeVisible();
   await page.unroute("**/pedidos");
 

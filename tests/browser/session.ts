@@ -1,15 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 
-export const API_URL = "http://localhost:3001";
-export const WEB_URL = "http://localhost:3000";
-export const OPERATIVA_URL = "http://localhost:5173";
+export const API_URL = process.env.BROWSER_API_URL ?? "http://localhost:3001";
+export const WEB_URL = process.env.BROWSER_WEB_URL ?? "http://localhost:3000";
+export const OPERATIVA_URL = process.env.BROWSER_OPERATIVA_URL ?? "http://localhost:5173";
 export const DEMO_PASSWORD = "Comanda2026!";
 
 export async function loginAs(page: Page, email: string, password: string, origin: string): Promise<void> {
   await page.goto(origin);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Contraseña").fill(password);
-  await page.getByRole("button", { name: origin.endsWith(":5173") ? "Entrar" : "Ingresar" }).click();
+  await page.getByRole("button", { name: origin === OPERATIVA_URL ? "Entrar" : "Ingresar" }).click();
   await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
 }
 
@@ -41,10 +41,10 @@ export async function currentCashShift(page: Page): Promise<{
   }, API_URL);
 }
 
-export async function createMesaPedido(page: Page, quantity = 1): Promise<string> {
+export async function createBarraPedido(page: Page, quantity = 1): Promise<string> {
+  await page.getByRole("button", { name: "Barra", exact: true }).click();
   const selects = page.getByRole("combobox");
-  await selects.nth(0).selectOption({ index: 1 });
-  const plateSelect = selects.nth(1);
+  const plateSelect = selects.first();
   await plateSelect.selectOption({ index: 1 });
   const plateName = await plateSelect.locator("option:checked").textContent();
   await page.getByRole("spinbutton").first().fill(String(quantity));

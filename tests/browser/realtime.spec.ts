@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createMesaPedido, DEMO_PASSWORD, OPERATIVA_URL, loginAs } from "./session";
+import { createBarraPedido, DEMO_PASSWORD, OPERATIVA_URL, loginAs } from "./session";
 
 test("kitchen receives a newly sent order over realtime", async ({ browser }) => {
   const kitchenContext = await browser.newContext();
@@ -13,7 +13,7 @@ test("kitchen receives a newly sent order over realtime", async ({ browser }) =>
 
     await loginAs(waiter, "mozo.belgrano@donmario.test", DEMO_PASSWORD, OPERATIVA_URL);
     await expect(waiter.getByText("Nuevo pedido", { exact: true })).toBeVisible();
-    const plateName = await createMesaPedido(waiter, 37);
+    const plateName = await createBarraPedido(waiter, 37);
     const orderCard = waiter.locator(".tarjeta-pedido").filter({ hasText: `37× ${plateName}` });
     await expect(orderCard.getByRole("button", { name: "Enviar a cocina" })).toBeVisible();
     await orderCard.getByRole("button", { name: "Enviar a cocina" }).click();
@@ -21,7 +21,7 @@ test("kitchen receives a newly sent order over realtime", async ({ browser }) =>
     await expect(kitchen.locator(".ticket").filter({ hasText: `37× ${plateName}` })).toBeVisible({ timeout: 20_000 });
 
     await kitchenContext.setOffline(true);
-    const reconnectedPlateName = await createMesaPedido(waiter, 38);
+    const reconnectedPlateName = await createBarraPedido(waiter, 38);
     const reconnectedOrder = waiter.locator(".tarjeta-pedido").filter({ hasText: `38× ${reconnectedPlateName}` });
     await reconnectedOrder.getByRole("button", { name: "Enviar a cocina" }).click();
     await kitchenContext.setOffline(false);

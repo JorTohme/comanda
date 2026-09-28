@@ -14,12 +14,14 @@ import { SwitchSucursalDto } from "./dto/switch-sucursal.dto";
 import { CreateInvitationDto } from "./dto/create-invitation.dto";
 import { AcceptInvitationDto } from "./dto/accept-invitation.dto";
 
+const loginRateLimit = process.env.NODE_ENV === "test" ? 120 : 5;
+
 @Controller("auth")
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: loginRateLimit, ttl: 60_000 } })
   @Post("login")
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);

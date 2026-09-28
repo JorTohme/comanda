@@ -12,6 +12,7 @@ import { activateOfflineUpdate } from "./offline-update";
 export default function App() {
   const [session, setSession] = useState<AuthSession | null>(() => readSession());
   const [updateRegistration, setUpdateRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateSafe, setUpdateSafe] = useState(false);
   const reloadAfterUpdate = useRef(false);
 
@@ -19,7 +20,10 @@ export default function App() {
     let cancelled = false;
     let registration: ServiceWorkerRegistration | null = null;
     const showWaitingWorker = () => {
-      if (registration?.waiting) setUpdateRegistration(registration);
+      if (registration?.waiting) {
+        setUpdateRegistration(registration);
+        setUpdateAvailable(true);
+      }
     };
     const handleControllerChange = () => {
       if (reloadAfterUpdate.current) window.location.reload();
@@ -31,7 +35,9 @@ export default function App() {
       showWaitingWorker();
       registered.addEventListener("updatefound", () => {
         const installing = registered.installing;
-        installing?.addEventListener("statechange", showWaitingWorker);
+        installing?.addEventListener("statechange", () => {
+          if (installing.state === "installed") window.setTimeout(showWaitingWorker, 0);
+        });
       });
       navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
     }).catch(() => {});
@@ -68,14 +74,14 @@ export default function App() {
   }
 
   if (session.user.rol === "mozo") {
-    return <><OfflineUpdateNotice registration={updateRegistration} safe={updateSafe} onActivate={() => void handleActivateUpdate()} /><Suspense fallback={<p className="pantalla text-muted">Cargando...</p>}><MozoView key={`${session.user.id}:${session.user.orgId}:${session.user.sucursalId}`} session={session} onLogout={handleLogout} onOfflineUpdateSafetyChange={setUpdateSafe} /></Suspense></>;
+    return <><OfflineUpdateNotice registration={updateAvailable ? updateRegistration : null} safe={updateSafe} onActivate={() => void handleActivateUpdate()} /><Suspense fallback={<p className="pantalla text-muted">Cargando...</p>}><MozoView key={`${session.user.id}:${session.user.orgId}:${session.user.sucursalId}`} session={session} onLogout={handleLogout} onOfflineUpdateSafetyChange={setUpdateSafe} /></Suspense></>;
   }
 
   if (session.user.rol === "cocina") {
-    return <><OfflineUpdateNotice registration={updateRegistration} safe={updateSafe} onActivate={() => void handleActivateUpdate()} /><Suspense fallback={<p className="pantalla text-muted">Cargando...</p>}><CocinaView key={`${session.user.id}:${session.user.orgId}:${session.user.sucursalId}`} session={session} onLogout={handleLogout} onOfflineUpdateSafetyChange={setUpdateSafe} /></Suspense></>;
+    return <><OfflineUpdateNotice registration={updateAvailable ? updateRegistration : null} safe={updateSafe} onActivate={() => void handleActivateUpdate()} /><Suspense fallback={<p className="pantalla text-muted">Cargando...</p>}><CocinaView key={`${session.user.id}:${session.user.orgId}:${session.user.sucursalId}`} session={session} onLogout={handleLogout} onOfflineUpdateSafetyChange={setUpdateSafe} /></Suspense></>;
   }
 
-  return <><OfflineUpdateNotice registration={updateRegistration} safe={updateSafe} onActivate={() => void handleActivateUpdate()} /><UnsupportedRoleScreen session={session} onLogout={handleLogout} /></>;
+  return <><OfflineUpdateNotice registration={updateAvailable ? updateRegistration : null} safe={updateSafe} onActivate={() => void handleActivateUpdate()} /><UnsupportedRoleScreen session={session} onLogout={handleLogout} /></>;
 }
 
 function OfflineUpdateNotice({ registration, safe, onActivate }: { registration: ServiceWorkerRegistration | null; safe: boolean; onActivate: () => void }) {

@@ -254,9 +254,9 @@ export async function seedDemo(prisma,beforeCommit=async()=>{}){
 
 **Files:** browser harness/tests, root package/lock, CI and maintainer documentation in map.
 
-**Interfaces:** new Playwright dev dependency; `corepack pnpm test:browser` runs `playwright test`; config builds/starts API at 3001, web at 3000, operativa preview at 5173. `tests/browser/session.ts` exports `loginAs(page,email,password,origin):Promise<void>` using actual login form. Seed fixture uses documented demo accounts; provider HTTP remains fake only in API integration harness, browser never calls live MP.
+**Interfaces:** Playwright dev dependency; `corepack pnpm test:browser` runs `playwright test`; CI uses API 3001, web 3000, Operativa 5173, while local origins are overridable with `BROWSER_API_URL`, `BROWSER_WEB_URL`, and `BROWSER_OPERATIVA_URL`. `tests/browser/session.ts` exports `loginAs(page,email,password,origin):Promise<void>` using actual login form. Seed fixture uses documented demo accounts; provider HTTP remains fake only in API integration harness, browser never calls live MP.
 
-- [ ] Add Playwright during execution (`corepack pnpm add -Dw @playwright/test`; record lock). Browser config uses one worker, no reuseExistingServer in CI, `trace:'retain-on-failure'`; exercise production operational build (service workers disabled in Vite dev). Define real login helper and cold offline test:
+- [x] Add Playwright during execution; browser config uses one worker, no reuseExistingServer in CI, `trace:'retain-on-failure'`; exercise production operational build (service workers disabled in Vite dev). Define real login helper and cold offline test:
 
 ```ts
 export async function loginAs(page:Page,email:string,password:string,origin:string){
@@ -279,8 +279,9 @@ test('offline cold reload preserves saved session',async({page,context})=>{
 
 Verify actual labels against existing LoginScreen/AuthSession; adjust helper to visible current Spanish labels rather than introducing testing-only product copy.
 - [ ] Red: `corepack pnpm exec playwright test tests/browser/pwa.spec.ts` before worker implementation; failing test must demonstrate absent offline shell, not a broken selector/server.
-- [ ] Complete named browser scenarios with real interactions and assertions: offline create/reload/reconnect returns one server pedido; route API requests to 503 then 429 and observe retained visible command, restore network and observe one commit; failed validation retains retry/discard control; reload between outbox/view writes reconstructs command; old DB fixture migration quarantine; realtime deletion/reconnect snapshot removes stale row. Session scenarios: parallel 401, logout during blocked refresh, two pages refresh once, latest-token reconnect, account/branch switch isolates data. Money scenario admin opens shift, delivered cash collects once, closes shift and digital total does not change drawer. Invitation admin link/acceptance, nonadmin 403, pending response canceled on logout, copy failure/manual URL. PWA update test builds second version, triggers registration.update, draft/failed command blocks activation, clearing draft and explicitly resolving command allows user update while indexed data survives. Use plan 03's export/recovery controls, not destructive database deletion.
-- [ ] Extend CI services with health checks and `comanda_test` database, Redis 7; consistent env includes production config requirements and fake integration merchant. Keep corepack pnpm 9.1.2/Node 20. Add migration clean/upgrade tests, dedicated Jest integration command, frontend unit commands from plans 01/03, production build then Playwright; upload failure traces. Unit tests do not secretly skip integration failures.
+- [x] Add deterministic browser journeys for cold offline create/reload/reconnect, transient/permanent command recovery, safe waiting-worker update, invitation activation/copy/cancellation/role gating, cash-vs-digital collection, tenant switch, realtime delivery and multi-tab session refresh. Full local run: `corepack pnpm test:browser` → **12/12 passed** against seeded `comanda_test`; no live payment provider used.
+- [ ] Deferred browser coverage before claiming the entire design matrix: legacy IndexedDB migration/quarantine fixture, authoritative deletion/reconnect snapshot, logout during blocked refresh and parallel-401/reconnect token race, end-to-end cash-shift close, and actual CI workflow execution. Existing unit/integration coverage is not a substitute for these browser cases.
+- [x] Extend CI services with health checks and `comanda_test` database, Redis 7; consistent env includes production config requirements and fake integration merchant. Keep corepack pnpm 9.1.2/Node 20. Add dedicated Jest integration command, frontend unit commands from plans 01/03, production build then Playwright; upload failure traces. (CI config added; the remote workflow itself was not run because no push was made.)
 
 ```yaml
 # api-services job: existing postgres/redis services gain readiness health checks.
@@ -299,10 +300,10 @@ steps:
 ```
 
 Merge snippet into existing job rather than duplicate keys. Database service POSTGRES_DB must match comanda_test; HTTP servers use full test/CI JWT/CORS/public/web/signature configuration from plan 01. Browser fixtures do not require provider credentials. Migration upgrade test creates legacy fixture in separate disposable schema and applies migrations; duplicate-open shift diagnostic is asserted separately. Replace existing tautological smoke test only through plan 01's compiled HTTP boundary, do not remove healthy existing tests.
-- [ ] Green: all unit/integration/browser suites, `corepack pnpm turbo run lint`, `corepack pnpm turbo run build`, node PWA test, `git diff --check`. Record actual command results/infrastructure limits and update architecture/auth/offline/README/SEED docs with migration gates, rollback (retain receipt data; never downgrade money semantics by deleting Cobro), manual reconciliation, pending command export, update behavior and non-goals. Commit: `test: verify recovery workflows with disposable services`.
+- [x] Green local verification: `corepack pnpm turbo run test lint build` → 11 tasks passed (shared 60, API 216, Operativa 59; lint/build all packages); API integration → 7 suites/60 tests; Playwright → 12/12; built-worker node test → 1/1; `git diff --check` passed before final documentation update. Clean-migration reset and safe seed were run only against tmpfs `comanda_test`. The actual remote CI workflow and deferred browser scenarios remain unverified. Commit: `test: verify recovery workflows with disposable services` (base task committed; local follow-up is separate).
 
 ## Delivery Checklist
 
-- [ ] Map each original audit finding to its owning plan/task, test file/name, changed documentation and actual evidence; no invented review approval.
-- [ ] Report operational PWA acceptance separately from online-only console scope; report unknown historical data honestly, not as accurate historical sales.
-- [ ] Report remaining blocked/unverified tests explicitly, leave associated execution boxes unchecked, and preserve receipt-driven disabled/unmanaged status.
+- [x] Map each original audit finding to its owning plan/task, test file/name, changed documentation and actual evidence; no invented review approval.
+- [x] Report operational PWA acceptance separately from online-only console scope; report unknown historical data honestly, not as accurate historical sales.
+- [x] Report remaining unverified browser/remote-CI coverage explicitly, leave associated execution boxes unchecked, and preserve receipt-driven disabled/unmanaged status.

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { currentCashShift, DEMO_PASSWORD, loginAs, pesosFromCentavos, WEB_URL } from "./session";
+import { API_URL, currentCashShift, DEMO_PASSWORD, loginAs, pesosFromCentavos, WEB_URL } from "./session";
 
 test("cash collection increases drawer cash without changing the digital total", async ({ page }) => {
   await loginAs(page, "caja.belgrano@donmario.test", DEMO_PASSWORD, WEB_URL);
@@ -13,7 +13,7 @@ test("cash collection increases drawer cash without changing the digital total",
     const response = await fetch(`${apiUrl}/pedidos`, { headers: { Authorization: `Bearer ${session.accessToken}` } });
     if (!response.ok) throw new Error(`Could not list orders: ${response.status}`);
     return response.json() as Promise<Array<{ id: string; estado: string; items: Array<{ precioUnitario: number; cantidad: number }> }>>;
-  }, "http://localhost:3001");
+  }, API_URL);
   const delivered = pedidos.find((pedido) => pedido.estado === "entregado");
   expect(delivered).toBeTruthy();
   const orderTotal = delivered!.items.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0);

@@ -26,3 +26,5 @@ corepack pnpm exec node apps/api/prisma/seed.mjs
 ```
 
 El seed y la suite deben usar solamente el `comanda_test` local de los servicios descartables, nunca una base de negocio. Playwright usa los usuarios de prueba y datos demo documentados en [`SEED.md`](./SEED.md); los tests no abren Mercado Pago. CI configura salud de servicios, puertos, migraciones, tests y Chromium en un runner limpio.
+
+Para usar otros puertos locales, configurá `BROWSER_API_URL`, `BROWSER_WEB_URL` y `BROWSER_OPERATIVA_URL` con los orígenes elegidos. Antes de ejecutar Playwright, compilá web y Operativa con la URL de API correspondiente (`NEXT_PUBLIC_API_URL` y `VITE_API_URL`).

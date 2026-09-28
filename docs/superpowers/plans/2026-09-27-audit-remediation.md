@@ -51,7 +51,7 @@ Read the [approved design](../specs/2026-09-27-audit-remediation-design.md) with
 ## Final acceptance gate
 
 - [ ] Every ledger row points to an executed test and its actual output; no required suite silently skipped.
-- [ ] Shared/API/operativa unit tests, dedicated PostgreSQL/Redis integration tests, browser acceptance, lint and production builds pass.
+- [x] Shared/API/operativa unit tests, dedicated PostgreSQL/Redis integration tests, 12 local browser journeys, lint and production builds pass (latest local run; remote CI remains unrun).
 - [ ] Database migrations tested on clean and representative legacy fixtures; open-shift rollout gate and historical unknowns documented.
 - [ ] Authentication, receipts, branches and local command recovery verified together; no fake order ID submitted as a server order.
 - [ ] Committed receipt/command data is preserved by update and rollback policy; no receipt deletion used to fake a successful downgrade.
@@ -111,4 +111,4 @@ During execution, append each task's commit, exact command, tool version, exit s
 
 ## Next step
 
-Continue with remaining plan 03 offline/realtime tasks, then plan 04 operational completeness and the final browser/CI acceptance gate. No additional design ceremony or automatic SDD artifacts are required.
+Plan 03 and the committed Plan 04 implementation are complete on the local branch. The Plan 04 follow-up closes two browser-discovered defects and keeps configurable local ports; its remaining planned browser edge cases and hosted CI execution are explicitly unchecked in the Plan 04 ledger. Do not push or deploy without an explicit request. No additional design ceremony or automatic SDD artifacts are required.

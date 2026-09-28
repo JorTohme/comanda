@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { DEMO_PASSWORD, WEB_URL, loginAs } from "./session";
 
-test("an administrator activates an invited employee and the invited role is gated", async ({ page }) => {
+test("an administrator activates an invited employee and the invited role is gated", async ({ browser, page }) => {
   await loginAs(page, "admin@donmario.test", DEMO_PASSWORD, WEB_URL);
   await page.getByRole("link", { name: "Equipo" }).click();
   const email = `browser-${Date.now()}@example.test`;
@@ -12,16 +12,26 @@ test("an administrator activates an invited employee and the invited role is gat
 
   const activationUrl = page.getByLabel("Enlace de activación");
   await expect(activationUrl).toHaveValue(/\/invitacion\?token=/);
-  await page.goto(await activationUrl.inputValue());
-  await page.getByLabel("Nombre").fill("Mozo Browser");
-  await page.getByLabel("Contraseña", { exact: true }).fill("BrowserTest2026!");
-  await page.getByLabel("Repetir contraseña").fill("BrowserTest2026!");
-  await page.getByRole("button", { name: "Activar cuenta" }).click();
-  await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
+  const activationContext = await browser.newContext();
+  try {
+    const activationPage = await activationContext.newPage();
+    await activationPage.goto(await activationUrl.inputValue());
+    await activationPage.getByLabel("Nombre").fill("Mozo Browser");
+    await activationPage.getByRole("main").getByLabel("Contraseña", { exact: true }).fill("BrowserTest2026!");
+    await activationPage.getByLabel("Repetir contraseña").fill("BrowserTest2026!");
+    await activationPage.getByRole("button", { name: "Activar cuenta" }).click();
+    await expect(activationPage.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
+    await expect.poll(() => activationPage.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem("comanda.session") ?? "{}");
+      return session.user?.email;
+    })).toBe(email);
 
-  await page.goto(`${WEB_URL}/equipo`);
-  await expect(page.getByText("Tu rol no tiene permiso para acceder a esta sección.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Equipo" })).toHaveCount(0);
+    await activationPage.goto(`${WEB_URL}/equipo`);
+    await expect(activationPage.getByText("Tu rol no tiene permiso para acceder a esta sección.")).toBeVisible();
+    await expect(activationPage.getByRole("link", { name: "Equipo" })).toHaveCount(0);
+  } finally {
+    await activationContext.close();
+  }
 });
 
 test("copy failure exposes the activation link for manual copying", async ({ page }) => {
