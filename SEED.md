@@ -1,20 +1,35 @@
 # Datos de referencia (seed)
 
 Datos de desarrollo/demo con nombres realistas, generados por `apps/api/prisma/seed.mjs`.
-Idempotente: correrlo de nuevo borra y recrea solo esta organización — no toca ningún otro
-dato de la base.
+El seed solo reemplaza la organización con el ID fijo `5dbff8f2-89ed-4c65-b39d-f6c029346ee1`;
+no busca ni adopta organizaciones por nombre. Una organización existente con ese ID pero con
+otra identidad de usuarios se conserva y hace que el seed falle. Todo el reemplazo ocurre en
+una transacción, por lo que un error restaura los datos demo anteriores.
 
 ## Cómo correrlo
 
-Con Postgres levantado y las migraciones aplicadas:
+Con una base **local y descartable** de nombre terminado en `_demo` (recomendado) o `_test`,
+Postgres levantado y las migraciones aplicadas. Se requieren las dos variables de protección;
+el seed rechaza producción, flags ausentes, hosts remotos y bases con otro nombre antes de
+crear un cliente Prisma:
 
 ```bash
+NODE_ENV=development ALLOW_DEMO_SEED=true DATABASE_URL=postgresql://comanda:comanda@localhost:5432/comanda_demo pnpm --filter api run seed
+```
+
+En PowerShell:
+
+```powershell
+$env:NODE_ENV = "development"
+$env:ALLOW_DEMO_SEED = "true"
+$env:DATABASE_URL = "postgresql://comanda:comanda@localhost:5432/comanda_demo"
 pnpm --filter api run seed
 ```
 
-Si tu versión de Node no soporta `--env-file` (necesita 20.6+), exportá `DATABASE_URL`
-manualmente antes de correr `node apps/api/prisma/seed.mjs` desde `apps/api/` (el valor
-está en `apps/api/.env`).
+No apuntes el seed a una base compartida o con datos reales. Aunque una base `_test` pasa la
+validación, usala solo si es descartable: el ID demo fijo se reemplaza en cada ejecución.
+Las organizaciones antiguas llamadas “Asador Don Mario” con otro ID no se modifican ni se
+adoptan automáticamente.
 
 ## Organización
 
@@ -62,6 +77,11 @@ Por cada sucursal:
 - **Historial**: 7 días hacia atrás, un turno de caja cerrado por día con 12–20 pedidos
   cobrados cada uno (hora concentrada en almuerzo/cena) — alimenta Reportes con datos reales.
 - **Hoy**: un turno de caja abierto, con pedidos en distintos estados del pipeline (abierto,
-  enviado a cocina, en preparación, listo, entregado) más un par ya cobrados en el turno actual.
+  enviado a cocina, en preparación, listo, entregado) más tres ya cobrados en el turno actual.
 - Mix de tipo de servicio: mesa, barra, takeaway y delivery (mitad por plataforma —PedidosYa/
   Rappi—, mitad delivery propio con dirección).
+
+Cada pedido cobrado incluye su recibo `Cobro`, método y fecha; los pagos digitales tienen un
+identificador de proveedor ficticio exclusivo del demo y no contactan Mercado Pago. Los cierres
+históricos separan venta digital de efectivo: `totalCalculado` incluye apertura y efectivo,
+`totalDigital` contiene recibos digitales y `totalVentas` suma ambos métodos.
