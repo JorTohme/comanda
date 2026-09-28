@@ -9,7 +9,13 @@ export async function loginAs(page: Page, email: string, password: string, origi
   await page.goto(origin);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Contraseña").fill(password);
+  const loginResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname.endsWith("/auth/login"),
+    { timeout: 10_000 },
+  );
   await page.getByRole("button", { name: origin === OPERATIVA_URL ? "Entrar" : "Ingresar" }).click();
+  const response = await loginResponse;
+  if (!response.ok()) throw new Error(`Login failed (${response.status()}): ${await response.text()}`);
   await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
 }
 

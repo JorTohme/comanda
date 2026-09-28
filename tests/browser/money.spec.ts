@@ -25,4 +25,10 @@ test("cash collection increases drawer cash without changing the digital total",
   expect(after.totalVentas).toBe(before.totalVentas + orderTotal);
   await expect(page.getByText(`Efectivo esperado: ${pesosFromCentavos(after.totalCalculado)}`)).toBeVisible();
   await expect(page.getByText(`Cobros digitales: ${pesosFromCentavos(after.totalDigital)}`)).toBeVisible();
+
+  await page.getByPlaceholder("Monto declarado").fill(pesosFromCentavos(after.totalCalculado));
+  await page.getByRole("button", { name: "Cerrar turno" }).click();
+  await expect(page.getByRole("heading", { name: "Turno cerrado" })).toBeVisible();
+  await expect(page.getByText("Diferencia: 0.00")).toBeVisible();
+  await expect(page.getByText(`Cobros digitales: ${pesosFromCentavos(after.totalDigital)}`)).toBeVisible();
 });
