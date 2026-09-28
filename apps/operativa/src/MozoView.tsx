@@ -3,9 +3,6 @@ import {
   avanzarEstadoPedido,
   connectRealtime,
   disconnectRealtime,
-  listMesas,
-  listPedidos,
-  listPlatos,
   posicionPorDefecto,
   readSession,
   subscribeSession,
@@ -20,6 +17,7 @@ import { API_URL } from "./config";
 import { getDb, type OutboxEntry } from "./db/schema";
 import { useRxData } from "./db/useRxData";
 import { commandsWithoutProjection, crearPedidoOffline, discardCommand, flushOutbox, getPendingCommandCount, restorePendingOrders, retryCommand, setupAutoSync } from "./db/sync";
+import { setupSnapshotRecovery } from "./db/reconcile";
 import { exportLegacyDatabases, listLegacyDatabaseNames } from "./db/legacy-recovery";
 
 type ItemFormRow = { platoId: string; cantidad: string };
@@ -72,23 +70,11 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
     void getPendingCommandCount(tenant).then(setPendingCount).catch((err: unknown) => setError(mensajeDeError(err)));
   }, [commands.length, session.user.orgId, session.user.sucursalId]);
 
-  function cargarDatos() {
-    return Promise.all([listMesas(API_URL), listPlatos(API_URL), listPedidos(API_URL)])
-      .then(async ([mesasRes, platosRes, pedidosRes]) => {
-        const db = await getDb(session.user.orgId, session.user.sucursalId);
-        await Promise.all([
-          ...mesasRes.map((mesa) => db.collections.mesas.upsert(mesa)),
-          ...platosRes.map((plato) => db.collections.platos.upsert(plato)),
-          ...pedidosRes.map((pedido) => db.collections.pedidos.upsert(pedido)),
-        ]);
-      })
-      .catch((err: unknown) => setError(mensajeDeError(err)));
-  }
-
   useEffect(() => {
     const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
     let cancelled = false;
     let stopAutoSync = () => {};
+    let stopSnapshotRecovery = () => {};
     let socket: ReturnType<typeof connectRealtime> | null = null;
     const unsubscribe = subscribeSession(() => {
       const current = readSession();
@@ -96,6 +82,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
         cancelled = true;
         if (socket) disconnectRealtime(socket);
         stopAutoSync();
+        stopSnapshotRecovery();
       }
     });
 
@@ -111,17 +98,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
         setLegacyAvailable(legacyNames.length > 0);
         socket = connectRealtime(API_URL);
         stopAutoSync = setupAutoSync(API_URL, tenant, (err) => setError(mensajeDeError(err)), socket);
-        socket.on("pedido.actualizado", async (pedido: Pedido) => {
-          if (cancelled || pedido.orgId !== tenant.orgId || pedido.sucursalId !== tenant.sucursalId) return;
-          const db = await getDb(tenant.orgId, tenant.sucursalId);
-          await db.collections.pedidos.upsert(pedido);
-        });
-        socket.on("mesa.actualizada", async (mesa: Mesa) => {
-          if (cancelled || mesa.orgId !== tenant.orgId || mesa.sucursalId !== tenant.sucursalId) return;
-          const db = await getDb(tenant.orgId, tenant.sucursalId);
-          await db.collections.mesas.upsert(mesa);
-        });
-        await cargarDatos();
+        stopSnapshotRecovery = setupSnapshotRecovery(API_URL, tenant, socket, (err) => setError(mensajeDeError(err)), () => setCargando(false));
       })
       .catch((err: unknown) => setError(mensajeDeError(err)))
       .finally(() => {
@@ -133,6 +110,7 @@ export function MozoView({ session, onLogout }: { session: AuthSession; onLogout
       unsubscribe();
       if (socket) disconnectRealtime(socket);
       stopAutoSync();
+      stopSnapshotRecovery();
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);
 

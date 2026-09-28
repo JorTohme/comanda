@@ -5,10 +5,15 @@ import {
   avanzarEstadoPedido,
   canActOnPedido,
   centavosToPesos,
+  connectRealtime,
   createPedido,
+  disconnectRealtime,
+  getSessionGeneration,
   listMesas,
   listPedidos,
   listPlatos,
+  readSession,
+  realtimeEventSchemas,
   siguienteEstadoPedido,
   type EstadoPedido,
   type Mesa,
@@ -78,7 +83,7 @@ const FORM_VACIO: {
 };
 
 export default function PedidosPage() {
-  const { session } = useSession();
+  const { ready, session } = useSession();
   const rol = session?.user.rol;
   const puedeCrear = rol === "admin" || rol === "caja" || rol === "mozo";
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
@@ -89,15 +94,54 @@ export default function PedidosPage() {
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    Promise.all([listPedidos(API_URL), listMesas(API_URL), listPlatos(API_URL)])
-      .then(([pedidosRes, mesasRes, platosRes]) => {
+    if (!ready) return;
+    if (!session) { setCargando(false); return; }
+    const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
+    const generation = getSessionGeneration();
+    const controller = new AbortController();
+    let active = true;
+    const currentSession = () => {
+      const current = readSession();
+      return active && !controller.signal.aborted && getSessionGeneration() === generation &&
+        current?.user.id === session.user.id && current.user.orgId === tenant.orgId && current.user.sucursalId === tenant.sucursalId;
+    };
+    const refresh = () => {
+      if (!currentSession()) return;
+      void Promise.all([
+        listPedidos(API_URL, { signal: controller.signal }),
+        listMesas(API_URL, { signal: controller.signal }),
+        listPlatos(API_URL, undefined, { signal: controller.signal }),
+      ]).then(([pedidosRes, mesasRes, platosRes]) => {
+        if (!currentSession() || pedidosRes.some((row) => row.orgId !== tenant.orgId || row.sucursalId !== tenant.sucursalId) ||
+          mesasRes.some((row) => row.orgId !== tenant.orgId || row.sucursalId !== tenant.sucursalId) ||
+          platosRes.some((row) => row.orgId !== tenant.orgId || row.sucursalId !== tenant.sucursalId)) return;
         setPedidos(pedidosRes);
         setMesas(mesasRes);
         setPlatos(platosRes);
-      })
-      .catch((err: unknown) => setError(mensajeDeError(err)))
-      .finally(() => setCargando(false));
-  }, []);
+      }).catch((err: unknown) => { if (currentSession()) setError(mensajeDeError(err)); })
+        .finally(() => { if (currentSession()) setCargando(false); });
+    };
+    const socket = connectRealtime(API_URL);
+    const invalidationEvents = ["pedido.creado", "pedido.actualizado", "mesa.creada", "mesa.actualizada", "mesa.eliminada", "plato.creado", "plato.actualizado", "plato.eliminado"] as const;
+    const handlers = invalidationEvents.map((name) => {
+      const handler = (payload: unknown) => {
+        const parsed = realtimeEventSchemas[name].safeParse(payload);
+        if (!parsed.success || parsed.data.orgId !== tenant.orgId || parsed.data.sucursalId !== tenant.sucursalId) return;
+        refresh();
+      };
+      socket.on(name, handler);
+      return [name, handler] as const;
+    });
+    socket.on("connect", refresh);
+    refresh();
+    return () => {
+      active = false;
+      controller.abort();
+      socket.off("connect", refresh);
+      for (const [name, handler] of handlers) socket.off(name, handler);
+      disconnectRealtime(socket);
+    };
+  }, [ready, session]);
 
   function totalFormulario(): number {
     return form.items.reduce((acc, item) => {

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { avanzarEstadoPedido, connectRealtime, disconnectRealtime, listPedidos, listPlatos, readSession, subscribeSession, updateDisponibilidadPlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
+import { avanzarEstadoPedido, connectRealtime, disconnectRealtime, readSession, subscribeSession, updateDisponibilidadPlato, type AuthSession, type Pedido, type Plato, type TipoServicio } from "@comanda/shared";
 import { ErrorBanner } from "./_components/ErrorBanner";
 import { API_URL } from "./config";
 import { getDb } from "./db/schema";
 import { useRxData } from "./db/useRxData";
+import { setupSnapshotRecovery } from "./db/reconcile";
 
 const LABEL_TIPO_SERVICIO: Record<TipoServicio, string> = {
   mesa: "Mesa",
@@ -19,38 +20,20 @@ export function CocinaView({ session, onLogout }: { session: AuthSession; onLogo
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
-  function cargarDatos() {
-    return Promise.all([listPedidos(API_URL), listPlatos(API_URL)])
-      .then(async ([pedidosRes, platosRes]) => {
-        const db = await getDb(session.user.orgId, session.user.sucursalId);
-        await Promise.all([
-          ...pedidosRes.map((pedido) => db.collections.pedidos.upsert(pedido)),
-          ...platosRes.map((plato) => db.collections.platos.upsert(plato)),
-        ]);
-      })
-      .catch((err: unknown) => setError(mensajeDeError(err)));
-  }
-
   useEffect(() => {
-    cargarDatos().finally(() => setCargando(false));
-
+    const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
     const socket = connectRealtime(API_URL);
-    socket.on("pedido.actualizado", async (pedido: Pedido) => {
-      const db = await getDb(session.user.orgId, session.user.sucursalId);
-      await db.collections.pedidos.upsert(pedido);
-    });
-    socket.on("plato.actualizado", async (plato: Plato) => {
-      const db = await getDb(session.user.orgId, session.user.sucursalId);
-      await db.collections.platos.upsert(plato);
-    });
+    const stopSnapshotRecovery = setupSnapshotRecovery(API_URL, tenant, socket, (err) => setError(mensajeDeError(err)), () => setCargando(false));
     const unsubscribe = subscribeSession(() => {
       const current = readSession();
       if (!current || current.user.id !== session.user.id || current.user.orgId !== session.user.orgId || current.user.sucursalId !== session.user.sucursalId) {
+        stopSnapshotRecovery();
         disconnectRealtime(socket);
       }
     });
     return () => {
       unsubscribe();
+      stopSnapshotRecovery();
       disconnectRealtime(socket);
     };
   }, [session.user.id, session.user.orgId, session.user.sucursalId]);

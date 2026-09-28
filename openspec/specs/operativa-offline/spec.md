@@ -85,6 +85,43 @@ The system MUST keep showing the last known `mesas`, `platos`, and `pedidos` sta
 - WHEN the network becomes unavailable
 - THEN the system MUST continue rendering that data from the local store without an error state
 
+### Requirement: Reconcile local state from complete tenant snapshots
+
+Operativa MUST fetch complete authoritative `mesas`, `platos`, and `pedidos` lists on startup and after socket reconnect, foreground/focus recovery, and a bounded foreground interval. A snapshot MUST be applied only when all list requests succeed, every row passes the shared schema and matches the active organization and branch, and the session generation remains unchanged. Only then may stale server-backed rows be pruned. Every pending or failed outbox-backed optimistic Pedido MUST survive pruning unless that complete snapshot confirms the same `clientRequestId`; in that case the authoritative Pedido MUST be persisted before its optimistic projection and acknowledged command are removed.
+
+Snapshot requests MUST run outside the tenant write lock. Snapshot application MUST serialize with durable enqueue and local delivery/discard writes using a short tenant-scoped write lock; a delivery operation may take its delivery lock before this write lock, never the reverse. Events arriving during a snapshot MUST invalidate it and cause at most one immediate follow-up snapshot. Further recovery is delegated to the next normal foreground trigger.
+
+Realtime receivers MUST validate every payload with the shared event schema and verify both tenant identifiers before applying it. Older Pedido versions MUST be ignored; equal versions MUST invalidate local state and request an authoritative snapshot. A malformed event, wrong-tenant event, partial list response, or tenant mismatch MUST NOT cause pruning.
+
+#### Scenario: A complete snapshot removes stale server rows but retains queued Pedidos
+
+- GIVEN a complete validated snapshot for the active tenant and stale local server rows
+- AND the outbox contains pending or failed optimistic Pedidos
+- WHEN reconciliation commits the snapshot
+- THEN stale server rows MUST be removed while every pending or failed command and its optimistic projection remain
+
+#### Scenario: An event invalidates a snapshot during fetch
+
+- GIVEN an authoritative snapshot request is in progress
+- WHEN a valid tenant-scoped deletion event arrives before the response is committed
+- THEN the stale response MUST NOT overwrite the event and one follow-up snapshot MUST run
+
+#### Scenario: A partial or cross-tenant response is received
+
+- GIVEN one list request fails or a returned row belongs to another tenant
+- WHEN the snapshot is considered for application
+- THEN no collection may be pruned or partially updated
+
+#### Scenario: A stale Pedido event is received
+
+- GIVEN a local Pedido with version V
+- WHEN an event for the same Pedido has version below V
+- THEN the event MUST be ignored
+- WHEN its version equals V
+- THEN the client MUST request an authoritative snapshot rather than assume its full state is current
+
+**Verification status:** Jest tests cover snapshot completeness, tenant and generation fences, pending projection preservation, event version rules, and dirty follow-up. Browser lifecycle, real IndexedDB, and multi-tab behavior remain pending Plan04.
+
 ### Requirement: Creating a Pedido works offline
 
 The system MUST allow a Mozo to create a Pedido (mesa or barra) while offline. The Pedido MUST appear immediately in the Mozo's local list (optimistic), and MUST be queued for delivery to the server.

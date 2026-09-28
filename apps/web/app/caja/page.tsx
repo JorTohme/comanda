@@ -6,13 +6,18 @@ import {
   centavosToPesos,
   cerrarTurno,
   cobrarPedidoEfectivo,
+  connectRealtime,
   crearPreferenciaPago,
+  disconnectRealtime,
+  getSessionGeneration,
   listPedidos,
   listarIncidentesPago,
   reconciliarPago,
   obtenerTurnoActual,
   pesosToCentavos,
   registrarMovimiento,
+  readSession,
+  realtimeEventSchemas,
   type Pedido,
   type Pago,
   type TipoMovimientoCaja,
@@ -50,28 +55,62 @@ export default function CajaPage() {
   const [cobrandoPedidoId, setCobrandoPedidoId] = useState<string | null>(null);
   const [incidentesPago, setIncidentesPago] = useState<Pago[]>([]);
   const [paymentIds, setPaymentIds] = useState<Record<string, string>>({});
-  const { session } = useSession();
+  const { ready, session } = useSession();
 
   const [montoInicialPesos, setMontoInicialPesos] = useState("");
   const [movimientoForm, setMovimientoForm] = useState(MOVIMIENTO_FORM_VACIO);
   const [montoDeclaradoPesos, setMontoDeclaradoPesos] = useState("");
 
   useEffect(() => {
-    obtenerTurnoActual(API_URL)
-      .then(setTurno)
-      .catch((err: unknown) => setError(mensajeDeError(err)))
-      .finally(() => setCargando(false));
-    // Dataset is small (single-shift MVP): fetch all pedidos and filter client-side instead of
-    // adding a filtered backend endpoint just for this list.
-    listPedidos(API_URL)
-      .then((pedidos) => setPedidosPendientesCobro(pedidos.filter((p) => p.estado === "entregado")))
-      .catch((err: unknown) => setError(mensajeDeError(err)));
-  }, []);
-
-  useEffect(() => {
-    if (session?.user.rol !== "admin") return;
-    listarIncidentesPago(API_URL).then(setIncidentesPago).catch((err: unknown) => setError(mensajeDeError(err)));
-  }, [session?.user.rol]);
+    if (!ready) return;
+    if (!session) { setCargando(false); return; }
+    const tenant = { orgId: session.user.orgId, sucursalId: session.user.sucursalId };
+    const generation = getSessionGeneration();
+    const controller = new AbortController();
+    let active = true;
+    const currentSession = () => {
+      const current = readSession();
+      return active && !controller.signal.aborted && getSessionGeneration() === generation &&
+        current?.user.id === session.user.id && current.user.orgId === tenant.orgId && current.user.sucursalId === tenant.sucursalId;
+    };
+    const refresh = () => {
+      if (!currentSession()) return;
+      const requests: Promise<unknown>[] = [obtenerTurnoActual(API_URL, { signal: controller.signal }), listPedidos(API_URL, { signal: controller.signal })];
+      if (session.user.rol === "admin") requests.push(listarIncidentesPago(API_URL, { signal: controller.signal }));
+      void Promise.all(requests).then(([turnoRes, pedidosRes, incidentesRes]) => {
+        if (!currentSession()) return;
+        const pedidos = pedidosRes as Pedido[];
+        if (pedidos.some((row) => row.orgId !== tenant.orgId || row.sucursalId !== tenant.sucursalId) ||
+          (turnoRes && ((turnoRes as TurnoCajaDetalle).orgId !== tenant.orgId || (turnoRes as TurnoCajaDetalle).sucursalId !== tenant.sucursalId))) return;
+        const incidentes = (incidentesRes ?? []) as Pago[];
+        if (session.user.rol === "admin" && incidentes.some((row) => row.orgId !== tenant.orgId || row.sucursalId !== tenant.sucursalId)) return;
+        setTurno(turnoRes as TurnoCajaDetalle | null);
+        setPedidosPendientesCobro(pedidos.filter((pedido) => pedido.estado === "entregado"));
+        if (session.user.rol === "admin") setIncidentesPago(incidentes);
+      }).catch((err: unknown) => { if (currentSession()) setError(mensajeDeError(err)); })
+        .finally(() => { if (currentSession()) setCargando(false); });
+    };
+    const socket = connectRealtime(API_URL);
+    const names = ["pedido.creado", "pedido.actualizado", "caja.actualizada"] as const;
+    const handlers = names.map((name) => {
+      const handler = (payload: unknown) => {
+        const parsed = realtimeEventSchemas[name].safeParse(payload);
+        if (!parsed.success || parsed.data.orgId !== tenant.orgId || parsed.data.sucursalId !== tenant.sucursalId) return;
+        refresh();
+      };
+      socket.on(name, handler);
+      return [name, handler] as const;
+    });
+    socket.on("connect", refresh);
+    refresh();
+    return () => {
+      active = false;
+      controller.abort();
+      socket.off("connect", refresh);
+      for (const [name, handler] of handlers) socket.off(name, handler);
+      disconnectRealtime(socket);
+    };
+  }, [ready, session]);
 
   async function handleReconciliarPago(pago: Pago) {
     const paymentId = paymentIds[pago.id]?.trim();

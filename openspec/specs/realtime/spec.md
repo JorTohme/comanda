@@ -96,6 +96,24 @@ Realtime publication MUST be attempted only after persistence commits. Synchrono
 - WHEN Socket.io/Redis publication throws synchronously
 - THEN the gateway MUST log the transport error and the HTTP write MUST still succeed
 
+### Requirement: Client events invalidate tenant-safe views
+
+Operativa and Web realtime receivers MUST validate each payload with `realtimeEventSchemas` before using it and reject events whose `orgId` or `sucursalId` does not match the mounted session. Operativa may apply validated same-tenant CRUD snapshots locally; deletion envelopes remove only the matching tenant record. Web Pedidos and Caja MUST treat relevant events as invalidation hints and refetch complete authorized API views rather than trusting event data as the final state. Async refetches MUST be canceled or ignored after the session generation, user, organization, or branch changes. Socket listeners, timers, and outstanding requests MUST be cleaned up when their owning view is disposed.
+
+Operativa MUST also refresh complete authoritative `mesas`, `platos`, and `pedidos` lists at startup, on socket reconnect, when the page becomes online/visible/focused, and on a bounded foreground interval. A snapshot may prune local server rows only after every list succeeds and every record matches the active tenant. Snapshot fetches stay outside the tenant write lock; applying the snapshot serializes with local enqueue and delivery writes. Events received during fetch invalidate the result and request at most one immediate follow-up.
+
+#### Scenario: A malformed or foreign-tenant event is received
+
+- GIVEN an event payload that fails its shared schema or identifies a different organization or branch
+- WHEN a client receiver processes it
+- THEN it MUST NOT mutate local state or refetch using that payload
+
+#### Scenario: A Web view receives a valid same-tenant invalidation
+
+- GIVEN a Web view has an active session for organization O and branch S
+- WHEN it receives a valid Pedido or Caja event for O and S
+- THEN it MUST refetch the relevant API data and ignore any late response after the active session changes
+
 ### Requirement: Caja invalidation event
 
 The system MUST emit `caja.actualizada` after successful shift, movement, or receipt mutations. Its payload MUST contain only `{ orgId, sucursalId, turnoId }`, where `turnoId` may be `null`; it MUST NOT contain trusted balance totals. Cash and digital receipt mutations also emit `pedido.actualizado` with the Pedido including its Cobro.

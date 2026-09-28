@@ -39,26 +39,28 @@ function pedidoOptimista(
 }
 
 export async function crearPedidoOffline(input: CreatePedidoInput, tenant: TenantContext, apiUrl: string): Promise<void> {
-  const db = await getDb(tenant.orgId, tenant.sucursalId);
   const clientRequestId = crypto.randomUUID();
+  const db = await getDb(tenant.orgId, tenant.sucursalId);
   const platos = (await db.collections.platos.find().exec()).map((doc: { toJSON(): { id: string; nombre: string; precio: number } }) => doc.toJSON());
   const optimista = pedidoOptimista(clientRequestId, input, platos, tenant);
 
-  await db.collections.outbox.upsert({
-    id: clientRequestId,
-    orgId: tenant.orgId,
-    sucursalId: tenant.sucursalId,
-    input: JSON.stringify({ ...input, clientRequestId }),
-    optimistic: JSON.stringify(optimista),
-    status: "pending",
-    createdAt: optimista.createdAt,
-    attempts: 0,
-    retryAt: 0,
-    errorCode: null,
-    errorMessage: null,
-    legacyRaw: "",
-  } satisfies OutboxEntry);
-  await db.collections.pedidos.upsert(optimista);
+  await withTenantWriteLock(tenant, async () => {
+    await db.collections.outbox.upsert({
+      id: clientRequestId,
+      orgId: tenant.orgId,
+      sucursalId: tenant.sucursalId,
+      input: JSON.stringify({ ...input, clientRequestId }),
+      optimistic: JSON.stringify(optimista),
+      status: "pending",
+      createdAt: optimista.createdAt,
+      attempts: 0,
+      retryAt: 0,
+      errorCode: null,
+      errorMessage: null,
+      legacyRaw: "",
+    } satisfies OutboxEntry);
+    await db.collections.pedidos.upsert(optimista);
+  });
 
   await flushOutbox(apiUrl, tenant);
 }
@@ -171,6 +173,25 @@ export function commandsWithoutProjection(commands: OutboxEntry[], pedidos: Pick
 }
 
 const outboxOperationQueues = new Map<string, Promise<void>>();
+const tenantWriteQueues = new Map<string, Promise<void>>();
+
+export async function withTenantWriteLock<T>(tenant: TenantContext, operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const key = `${tenant.orgId}:${tenant.sucursalId}`;
+  const previous = tenantWriteQueues.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  tenantWriteQueues.set(key, turn);
+  await previous;
+  try {
+    const navigator = globalThis.navigator as Navigator & { locks?: LockManager };
+    const lockName = `comanda.tenant-write:${tenant.orgId}:${tenant.sucursalId}`;
+    if (!navigator?.locks) return await operation();
+    return await navigator.locks.request(lockName, signal ? { mode: "exclusive", signal } : { mode: "exclusive" }, () => operation());
+  } finally {
+    release();
+    if (tenantWriteQueues.get(key) === turn) tenantWriteQueues.delete(key);
+  }
+}
 
 async function withOutboxLock(tenant: TenantContext, operation: () => Promise<void>, signal?: AbortSignal): Promise<void> {
   const key = `${tenant.orgId}:${tenant.sucursalId}`;
@@ -192,17 +213,20 @@ async function withOutboxLock(tenant: TenantContext, operation: () => Promise<vo
 
 export function retryCommand(id: string, tenant: TenantContext): Promise<void> {
   return withOutboxLock(tenant, async () => {
-    const db = await getDb(tenant.orgId, tenant.sucursalId);
-    const entry = await db.collections.outbox.findOne({ selector: { id } }).exec();
-    if (!entry) return;
-    const command = documentData<OutboxEntry>(entry);
-    if (command.id !== id || command.orgId !== tenant.orgId || command.sucursalId !== tenant.sucursalId || command.status !== "failed" || command.errorCode === "legacy_recovery_required") return;
-    await entry.incrementalPatch({ status: "pending", retryAt: 0, errorCode: null, errorMessage: null });
+    await withTenantWriteLock(tenant, async () => {
+      const db = await getDb(tenant.orgId, tenant.sucursalId);
+      const entry = await db.collections.outbox.findOne({ selector: { id } }).exec();
+      if (!entry) return;
+      const command = documentData<OutboxEntry>(entry);
+      if (command.id !== id || command.orgId !== tenant.orgId || command.sucursalId !== tenant.sucursalId || command.status !== "failed" || command.errorCode === "legacy_recovery_required") return;
+      await entry.incrementalPatch({ status: "pending", retryAt: 0, errorCode: null, errorMessage: null });
+    });
   });
 }
 
 export function discardCommand(id: string, tenant: TenantContext): Promise<void> {
   return withOutboxLock(tenant, async () => {
+    await withTenantWriteLock(tenant, async () => {
     const db = await getDb(tenant.orgId, tenant.sucursalId);
     const entry = await db.collections.outbox.findOne({ selector: { id } }).exec();
     if (!entry) return;
@@ -227,6 +251,7 @@ export function discardCommand(id: string, tenant: TenantContext): Promise<void>
       }
     }
     await entry.remove();
+    });
   });
 }
 
@@ -358,10 +383,13 @@ async function drainOutbox(apiUrl: string, tenant: TenantContext, options: Flush
     }
 
     // Keep the durable command until the authoritative projection is stored and the optimistic row is removed.
-    await db.collections.pedidos.upsert(validated.data);
-    const optimisticOrder = await db.collections.pedidos.findOne({ selector: { id: command.id } }).exec();
-    if (optimisticOrder) await optimisticOrder.remove();
-    await entry.remove();
+    await withTenantWriteLock(tenant, async () => {
+      if (options.signal?.aborted || !sessionUnchanged(session, generation, tenant)) return;
+      await db.collections.pedidos.upsert(validated.data);
+      const optimisticOrder = await db.collections.pedidos.findOne({ selector: { id: command.id } }).exec();
+      if (optimisticOrder) await optimisticOrder.remove();
+      await entry.remove();
+    }, options.signal);
   }
 }
 
