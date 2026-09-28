@@ -13,6 +13,7 @@ import { MesasService } from "../salon/mesas/mesas.service";
 import { PlatosController } from "../catalogo/platos/platos.controller";
 import { PlatosService } from "../catalogo/platos/platos.service";
 import { PedidosController } from "../pedidos/pedidos.controller";
+import { CobrosService } from "../pedidos/cobros.service";
 import { PedidosService } from "../pedidos/pedidos.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -32,6 +33,8 @@ describe("HTTP tenant and actor boundary", () => {
     plato: { findFirst: jest.fn(), update: jest.fn() },
     categoria: { findFirst: jest.fn() },
     pedido: { findFirst: jest.fn() },
+    $queryRaw: jest.fn(),
+    $transaction: jest.fn(),
   };
   const auth = { createInvitation: jest.fn() };
   const pedidos = { updateEstado: jest.fn() };
@@ -49,6 +52,7 @@ describe("HTTP tenant and actor boundary", () => {
         MesasService,
         PlatosService,
         { provide: PedidosService, useValue: pedidos },
+        { provide: CobrosService, useValue: { cobrarEfectivo: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: RealtimeGateway, useValue: realtime },
       ],
@@ -62,7 +66,11 @@ describe("HTTP tenant and actor boundary", () => {
   });
 
   afterAll(async () => { await app?.close(); });
-  beforeEach(() => { jest.resetAllMocks(); });
+  beforeEach(() => {
+    jest.resetAllMocks();
+    prisma.$queryRaw.mockResolvedValue([{ id: sucursalId }]);
+    prisma.$transaction.mockImplementation((operation: (tx: typeof prisma) => unknown) => operation(prisma));
+  });
 
   function headers(rol: "admin" | "caja" | "mozo" | "cocina") {
     return { Authorization: `Bearer ${jwt.sign({ sub: userId, rol, orgId, sucursalId })}` };
