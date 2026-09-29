@@ -73,6 +73,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api exec prisma generate
       - run: pnpm --filter api exec prisma migrate deploy
+      - run: pnpm --filter @comanda/shared build
       - run: pnpm --filter api exec jest --config jest.integration.config.cjs --runInBand
       - run: pnpm turbo run test lint build
       - run: node apps/api/prisma/seed.mjs
