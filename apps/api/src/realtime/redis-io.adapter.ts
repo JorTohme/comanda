@@ -3,17 +3,24 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { createClient } from "redis";
 import type { ServerOptions } from "socket.io";
 
+// Applies the HTTP CORS allow-list to Socket.IO; adds the Redis adapter only when REDIS_URL is set.
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor?: ReturnType<typeof createAdapter>;
   private pubClient?: ReturnType<typeof createClient>;
   private subClient?: ReturnType<typeof createClient>;
 
-  async connectToRedis(): Promise<void> {
-    const url = process.env.REDIS_URL ?? "redis://localhost:6379";
+  constructor(app: ConstructorParameters<typeof IoAdapter>[0], private readonly corsOrigins: string[]) {
+    super(app);
+  }
+
+  async connectToRedis(): Promise<boolean> {
+    const url = process.env.REDIS_URL?.trim();
+    if (!url) return false;
     this.pubClient = createClient({ url });
     this.subClient = this.pubClient.duplicate();
     await Promise.all([this.pubClient.connect(), this.subClient.connect()]);
     this.adapterConstructor = createAdapter(this.pubClient, this.subClient);
+    return true;
   }
 
   async close(server?: Parameters<IoAdapter["close"]>[0]): Promise<void> {
@@ -24,7 +31,7 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: ServerOptions) {
-    const server = super.createIOServer(port, options);
+    const server = super.createIOServer(port, { ...options, cors: { origin: this.corsOrigins } });
     if (this.adapterConstructor) server.adapter(this.adapterConstructor);
     return server;
   }

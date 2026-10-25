@@ -4,6 +4,7 @@ import { AppModule } from "../src/app.module";
 import { MercadoPagoClient } from "../src/pagos/mercadopago.client";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisIoAdapter } from "../src/realtime/redis-io.adapter";
+import { resolveRuntimeConfig } from "../src/runtime-config";
 
 export async function createTestApp(provider?: Partial<MercadoPagoClient>): Promise<{
   app: INestApplication;
@@ -23,7 +24,7 @@ export async function createTestApp(provider?: Partial<MercadoPagoClient>): Prom
   const module = await builder.compile();
   const app = module.createNestApplication({ logger: false });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
-  const adapter = new RedisIoAdapter(app);
+  const adapter = new RedisIoAdapter(app, resolveRuntimeConfig().corsOrigins);
   try {
     await adapter.connectToRedis();
     app.useWebSocketAdapter(adapter);

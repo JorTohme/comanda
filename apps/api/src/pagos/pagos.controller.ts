@@ -45,6 +45,7 @@ export class PagosController {
   @Public()
   @Post("webhook")
   async webhook(@Req() req: Request, @Query() query: Record<string, string>, @Body() body: Record<string, unknown>) {
+    this.pagosService.assertEnabled();
     const dataId = query["data.id"] ?? (body?.data as { id?: string } | undefined)?.id;
     const type = query.type ?? (body?.type as string | undefined) ?? (body?.topic as string | undefined);
 

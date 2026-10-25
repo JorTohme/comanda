@@ -34,4 +34,21 @@ describe("PagosService authorization boundary", () => {
     const actor = { ...admin, rol: "caja" } as JwtClaims;
     await expect(service.reconciliar("pago", "provider-payment", tenant, actor)).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  describe("when Mercado Pago is not configured", () => {
+    const previous = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    beforeEach(() => { delete process.env.MERCADOPAGO_ACCESS_TOKEN; });
+    afterEach(() => {
+      if (previous === undefined) delete process.env.MERCADOPAGO_ACCESS_TOKEN;
+      else process.env.MERCADOPAGO_ACCESS_TOKEN = previous;
+    });
+
+    it("responds 503 for preference creation, webhook processing and reconciliation", async () => {
+      const service = new PagosService(prisma, provider, cobros, realtime);
+      const message = "Mercado Pago is not configured";
+      await expect(service.crearPreferencia("pedido", tenant, admin)).rejects.toThrow(new ServiceUnavailableException(message));
+      await expect(service.procesarWebhook("payment")).rejects.toThrow(new ServiceUnavailableException(message));
+      await expect(service.reconciliar("pago", "payment", tenant, admin)).rejects.toThrow(new ServiceUnavailableException(message));
+    });
+  });
 });

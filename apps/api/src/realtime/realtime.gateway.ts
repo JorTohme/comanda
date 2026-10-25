@@ -8,7 +8,7 @@ function sala(sucursalId: string): string {
   return `sucursal:${sucursalId}`;
 }
 
-@WebSocketGateway({ cors: { origin: "*" } })
+@WebSocketGateway()
 export class RealtimeGateway implements OnGatewayConnection {
   @WebSocketServer() server!: Server;
   private readonly logger = new Logger(RealtimeGateway.name);
