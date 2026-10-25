@@ -12,6 +12,7 @@ npm-debug.log*
 # build output
 dist/
 .next/
+out/
 build/
 *.tsbuildinfo
 
@@ -30,3 +31,6 @@ coverage/
 .vscode/
 .idea/
 Thumbs.db
+
+# production secrets
+.env.production
