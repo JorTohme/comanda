@@ -34,3 +34,9 @@ Thumbs.db
 
 # production secrets
 .env.production
+
+# pnpm store created inside the repo by local installs
+.pnpm-store/
+
+# Course deliverables (kept local, repo is public)
+docs/entregas/
