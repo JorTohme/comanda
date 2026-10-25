@@ -43,11 +43,11 @@ export default defineConfig({
       },
     },
     {
-      command: `corepack pnpm --filter web exec next start -p ${webPort}`,
+      command: "corepack pnpm --filter web exec node scripts/serve-out.mjs",
       url: webUrl,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { NODE_ENV: "production", PORT: webPort, NEXT_PUBLIC_API_URL: apiUrl },
+      env: { NODE_ENV: "production", PORT: webPort },
     },
     {
       command: `corepack pnpm --filter operativa exec vite preview --host 127.0.0.1 --port ${operativaPort} --strictPort`,
