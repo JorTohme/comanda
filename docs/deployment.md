@@ -16,7 +16,7 @@ Only Caddy publishes ports. The API and Postgres are reachable only inside the c
 
 ## Prerequisites
 
-- A VM with Docker and the Compose plugin, ports 80, 443/tcp and 443/udp open. Examples: Oracle Cloud Always Free, a ~EUR 6 Hetzner Cloud server.
+- A VM with Docker and the Compose plugin, ports 80, 443/tcp and 443/udp open. Examples: Oracle Cloud Always Free, a ~EUR 6 Hetzner Cloud server. On a fresh Ubuntu VM, `sudo bash deploy/oracle-setup.sh` installs Docker and opens the host firewall (the cloud provider's own firewall, such as the Oracle VCN Security List, still has to allow the ports).
 - A hostname for the API (your domain or a DuckDNS subdomain) with an A/AAAA record pointing at the VM. Caddy needs it to issue the certificate.
 - A Cloudflare account for Pages.
 
