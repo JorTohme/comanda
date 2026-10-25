@@ -8,6 +8,7 @@ import { JwtService } from "./jwt.service";
 import { RolesGuard } from "./roles.guard";
 import { RedisThrottlerStorage } from "./redis-throttler.storage";
 import { RedisThrottlerModule } from "./redis-throttler.module";
+import { selectThrottlerStorage } from "./throttler-storage";
 
 @Global()
 @Module({
@@ -17,7 +18,7 @@ import { RedisThrottlerModule } from "./redis-throttler.module";
       imports: [RedisThrottlerModule],
       inject: [RedisThrottlerStorage],
       useFactory: (storage: RedisThrottlerStorage) => ({
-        storage,
+        storage: selectThrottlerStorage(process.env, storage),
         throttlers: [{ ttl: 60_000, limit: 120 }],
       }),
     }),

@@ -9,7 +9,8 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy 
   private connecting?: Promise<void>;
 
   constructor() {
-    this.client = createClient({ url: process.env.REDIS_URL ?? "redis://localhost:6379" });
+    // Never connects unless used; auth.module only selects this storage when REDIS_URL is set.
+    this.client = createClient({ url: process.env.REDIS_URL?.trim() });
   }
 
   async increment(key: string, ttl: number, limit: number, blockDuration: number): Promise<ThrottlerStorageRecord> {

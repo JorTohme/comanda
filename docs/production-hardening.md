@@ -7,13 +7,15 @@ This guide records the safeguards introduced by the production-hardening branch.
 `NODE_ENV=production` requires all of the following at API startup:
 
 - `JWT_SECRET`
-- `CORS_ORIGINS` — comma-separated allowed frontend origins
-- `PUBLIC_BASE_URL` — public API origin used to register the Mercado Pago webhook URL
+- `CORS_ORIGINS` — comma-separated allowed frontend origins; also the allow-list for WebSocket (Socket.IO) connections
 - `WEB_APP_URL` — public web origin used in manual invitation activation links
-- `MERCADOPAGO_ACCESS_TOKEN`
-- `MERCADOPAGO_WEBHOOK_SECRET`
 
-Startup fails if any is missing. Swagger is exposed only outside production. Do not use permissive CORS in production.
+Optional integrations:
+
+- `REDIS_URL` — when unset, Socket.IO and rate limiting use in-memory state, so run a single API instance only (a startup log line states the active mode). When set, both are shared through Redis.
+- Mercado Pago is enabled only when `MERCADOPAGO_ACCESS_TOKEN` is non-blank. When enabled, `MERCADOPAGO_WEBHOOK_SECRET`, `MERCADOPAGO_MERCHANT_ID` and `PUBLIC_BASE_URL` (public API origin used for the webhook URL) are also required. Setting any of those three without the access token fails startup (partial configuration). When disabled, preference creation, the webhook and manual reconciliation respond `503 Mercado Pago is not configured`; cash payments and cash shifts are unaffected.
+
+Startup fails if a required variable is missing. Swagger is exposed only outside production. Do not use permissive CORS in production: WebSocket origins are restricted to `CORS_ORIGINS` (non-browser clients without an `Origin` header are still authenticated by JWT at the handshake).
 
 ## Authentication and branch scope
 

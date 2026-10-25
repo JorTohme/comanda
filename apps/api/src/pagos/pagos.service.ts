@@ -10,6 +10,7 @@ import { lockSucursal } from "../prisma/branch-lock";
 import { PrismaService } from "../prisma/prisma.service";
 import { CobrosService } from "../pedidos/cobros.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { isMercadoPagoEnabled } from "../runtime-config";
 import { MercadoPagoClient, type PagoMercadoPago, type PreferenciaCreada } from "./mercadopago.client";
 
 const MAX_INT = 2_147_483_647n;
@@ -84,6 +85,7 @@ export class PagosService {
 
   async crearPreferencia(pedidoId: string, tenant: TenantContext, actor: JwtClaims): Promise<{ initPoint: string; preferenceId: string }> {
     assertActor(actor, tenant);
+    this.assertEnabled();
     const merchantId = this.requireMerchantId();
     const notificationUrl = this.notificationUrl();
     const reservation = await this.prisma.$transaction(async (tx): Promise<AttemptOutcome> => {
@@ -162,6 +164,7 @@ export class PagosService {
   }
 
   async procesarWebhook(paymentId: string): Promise<{ estado: string; incidente: string | null }> {
+    this.assertEnabled();
     let payment: PagoMercadoPago;
     try { payment = await this.mpClient.obtenerPago(paymentId); }
     catch { throw new ServiceUnavailableException("Payment provider is temporarily unavailable"); }
@@ -173,6 +176,7 @@ export class PagosService {
 
   async reconciliar(pagoId: string, paymentId: string, tenant: TenantContext, actor: JwtClaims): Promise<{ estado: string; incidente: string | null }> {
     assertActor(actor, tenant, true);
+    this.assertEnabled();
     this.requireMerchantId();
     const attempt = await this.prisma.pago.findFirst({ where: { id: pagoId, ...tenant } });
     if (!attempt) throw new NotFoundException("Payment attempt not found");
@@ -255,6 +259,10 @@ export class PagosService {
       this.realtime.emitToSucursal(tenant.sucursalId, "caja.actualizada", { ...tenant, turnoId: outcome.turnoId ?? null });
     }
     return { estado: outcome.estado, incidente: outcome.incidente };
+  }
+
+  assertEnabled(): void {
+    if (!isMercadoPagoEnabled()) throw new ServiceUnavailableException("Mercado Pago is not configured");
   }
 
   private requireMerchantId(): string {

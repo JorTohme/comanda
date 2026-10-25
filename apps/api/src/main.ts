@@ -23,9 +23,15 @@ async function bootstrap() {
     SwaggerModule.setup("docs", app, swaggerDocument);
   }
 
-  const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis();
+  const redisIoAdapter = new RedisIoAdapter(app, runtimeConfig.corsOrigins);
+  const redisEnabled = await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
+  // eslint-disable-next-line no-console
+  console.log(redisEnabled
+    ? "redis enabled: realtime and rate limiting are shared across instances"
+    : "REDIS_URL not set: using in-memory realtime and rate limiting (single instance only)");
+  // eslint-disable-next-line no-console
+  if (!runtimeConfig.mercadoPagoEnabled) console.log("Mercado Pago not configured: digital payment endpoints respond 503");
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
