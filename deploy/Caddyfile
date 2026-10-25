@@ -1,0 +1,6 @@
+# Automatic HTTPS (Let's Encrypt) for API_DOMAIN. With API_DOMAIN=localhost Caddy uses its internal CA.
+# WebSockets (Socket.IO) are proxied transparently by reverse_proxy.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:3001
+}
